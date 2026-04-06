@@ -374,6 +374,9 @@ def _parse_labeled_link(value: str) -> tuple[str | None, str]:
     if not candidate:
         return None, ""
 
+    if _looks_like_url(candidate):
+        return None, candidate
+
     # Support Markdown-style links: [Label](https://example.com)
     if candidate.startswith("[") and "](" in candidate and candidate.endswith(")"):
         closing_bracket = candidate.find("](")

@@ -1,4 +1,4 @@
-import { startTransition, type ReactNode, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
+import { startTransition, type ReactNode, useDeferredValue, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import './App.css'
 import { appConfig } from './config/appConfig'
 import type { BackendHealth, IndexedPackage, PackageAsset, PackageIdentity, ServerConfig, WorkerResponse } from './types/unitypackage'
@@ -389,19 +389,12 @@ function IdentityMessageHelp({ identity }: { identity: PackageIdentity }) {
   )
 }
 
-function IdentityThumbnail({ identity, alt }: { identity: PackageIdentity; alt: string }) {
-  const directUrl = identity.thumbnailUrl?.trim()
-  const [sourceUrl, setSourceUrl] = useState<string | null>(directUrl ?? null)
+function IdentityThumbnailImage({ directUrl, alt }: { directUrl: string; alt: string }) {
+  const [sourceUrl, setSourceUrl] = useState<string | null>(directUrl)
   const [usingProxy, setUsingProxy] = useState(false)
   const [failed, setFailed] = useState(false)
 
-  useEffect(() => {
-    setSourceUrl(directUrl ?? null)
-    setUsingProxy(false)
-    setFailed(false)
-  }, [directUrl])
-
-  if (!directUrl || failed || !sourceUrl) {
+  if (failed || !sourceUrl) {
     return <div className="identity-thumbnail identity-thumbnail-fallback">No thumbnail</div>
   }
 
@@ -424,11 +417,20 @@ function IdentityThumbnail({ identity, alt }: { identity: PackageIdentity; alt: 
   )
 }
 
+function IdentityThumbnail({ identity, alt }: { identity: PackageIdentity; alt: string }) {
+  const directUrl = identity.thumbnailUrl?.trim()
+
+  if (!directUrl) {
+    return <div className="identity-thumbnail identity-thumbnail-fallback">No thumbnail</div>
+  }
+
+  return <IdentityThumbnailImage key={directUrl} directUrl={directUrl} alt={alt} />
+}
+
 function App() {
   const workerRef = useRef<Worker | null>(null)
   const previewUrlsRef = useRef(new Map<string, string>())
   const packageSourceRef = useRef<IndexedPackage | null>(null)
-  const handleSelectedFileRef = useRef<(file: File | null) => void>(() => {})
   const dragDepthRef = useRef(0)
   const [backend, setBackend] = useState<BackendHealth>({
     status: 'checking',
@@ -453,6 +455,31 @@ function App() {
   const usesAutomaticRouting = appConfig.indexingMode === 'size-based'
   const backendAvailable = backend.status === 'online'
   const localOnlyMode = backend.status === 'offline'
+
+  function handleSelectedFile(file: File | null) {
+    setSelectedFile(file)
+    setPackageUrl('')
+    setPkg(null)
+    setError(null)
+    setProgress(0)
+
+    if (!file) {
+      setStatusMessage('Select a .unitypackage to begin.')
+      return
+    }
+
+    if (usesAutomaticRouting || localOnlyMode) {
+      setStatusMessage(`Selected ${file.name}. Starting indexing.`)
+      void indexUsingConfiguredMode(file)
+      return
+    }
+
+    setStatusMessage(`Ready to index ${file.name}.`)
+  }
+
+  const handleDroppedFile = useEffectEvent((file: File | null) => {
+    handleSelectedFile(file)
+  })
 
   function clearPreviewUrls() {
     for (const url of previewUrlsRef.current.values()) {
@@ -540,7 +567,7 @@ function App() {
       }
 
       setShowUrlInput(false)
-      handleSelectedFileRef.current(file)
+      handleDroppedFile(file)
     }
 
     window.addEventListener('dragenter', onDragEnter)
@@ -801,7 +828,7 @@ function App() {
         }
       })()
     }
-  }, [backend.status, pkg, previews, visibleAssets])
+  }, [backendAvailable, pkg, previews, visibleAssets])
 
   const packageSizeLabel = selectedFile ? formatFileSize(selectedFile.size) : packageUrl.trim() ? 'Remote URL selected' : 'No package selected'
   const selectedPackageLabel = selectedFile?.name ?? (packageUrl.trim() ? getFilenameFromUrl(packageUrl.trim()) : 'Nothing loaded yet')
@@ -812,31 +839,6 @@ function App() {
       ? `Indexing target is selected automatically. Files at or above ${thresholdLabel} go through the backend when it is available.`
       : 'Indexing target is selected by the user.'
   const canRetryCurrentSource = busyAction === 'idle' && (Boolean(selectedFile) || packageUrl.trim().length > 0)
-
-  function handleSelectedFile(file: File | null) {
-    setSelectedFile(file)
-    setPackageUrl('')
-    setPkg(null)
-    setError(null)
-    setProgress(0)
-
-    if (!file) {
-      setStatusMessage('Select a .unitypackage to begin.')
-      return
-    }
-
-    if (usesAutomaticRouting || localOnlyMode) {
-      setStatusMessage(`Selected ${file.name}. Starting indexing.`)
-      void indexUsingConfiguredMode(file)
-      return
-    }
-
-    setStatusMessage(`Ready to index ${file.name}.`)
-  }
-
-  useEffect(() => {
-    handleSelectedFileRef.current = handleSelectedFile
-  }, [handleSelectedFile])
 
   async function indexLocally(fileOverride?: File) {
     const file = fileOverride ?? selectedFile
@@ -1073,7 +1075,7 @@ function App() {
       }
 
       const disposition = response.headers.get('content-disposition')
-      const filenameMatch = disposition?.match(/filename="?([^\"]+)"?$/)
+      const filenameMatch = disposition?.match(/filename="?([^"]+)"?$/)
       const filename = filenameMatch?.[1] ?? `${pkg.packageName.replace(/\.unitypackage$/i, '')}.zip`
       const bytes = await response.arrayBuffer()
       triggerBrowserDownload(filename, bytes)
@@ -1144,7 +1146,7 @@ function App() {
             {pkg?.identity.thumbnailUrl ? <IdentityThumbnail identity={pkg.identity} alt={getIdentityTitle(pkg.identity)} /> : null}
             <strong>{pkg ? getIdentityTitle(pkg.identity) : 'No package indexed yet'}</strong>
             <p>{pkg ? getIdentityMeta(pkg.identity) : 'Hash and GUID recognition will appear here.'}</p>
-            {pkg?.identity.author ? <p className="identity-author">Catalog author: {pkg.identity.author}</p> : null}
+            {pkg?.identity.author ? <p className="identity-author">Author: {pkg.identity.author}</p> : null}
             {pkg?.identity.sourceLinks.length ? (
               <p className="identity-sources">
                 <span>{pkg.identity.sourceLinks.length === 1 ? 'Source:' : 'Sources:'}</span>{' '}
