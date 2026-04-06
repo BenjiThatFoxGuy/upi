@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+if [ -z "${BASH_VERSION:-}" ]; then
+  exec bash "$0" "$@"
+fi
+
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -66,6 +70,7 @@ trap cleanup INT TERM EXIT
 echo "[unitypackage-browser-web] Starting backend on http://0.0.0.0:8000 ..."
 (
   cd "$SERVER_DIR"
+  export UNITYPACKAGE_BROWSER_DEV=1
   python app.py
 ) &
 BACKEND_PID=$!

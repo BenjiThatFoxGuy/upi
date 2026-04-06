@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import os
+import re
 import time
 from pathlib import Path
 from typing import Any
@@ -16,6 +17,17 @@ from .models import PackageFingerprint, PackageIdentity, PackageSourceLink, Pars
 DEFAULT_IDENTITY_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ1vTxn8EW89yA6cK2n3jCFxc8YUb39Nw9W1fKctHr_21oHzySw3_FGmCsagdr3mCUGC35xY_czo40G/pub?output=csv"
 
 _catalog_cache: tuple[float, list[dict[str, str]]] | None = None
+
+
+def _is_dev_mode() -> bool:
+    env_candidates = (
+        os.getenv("UNITYPACKAGE_BROWSER_DEV", ""),
+        os.getenv("FLASK_ENV", ""),
+        os.getenv("FLASK_DEBUG", ""),
+        os.getenv("PYTHON_ENV", ""),
+    )
+    normalized = [candidate.strip().lower() for candidate in env_candidates if candidate]
+    return any(value in {"1", "true", "yes", "on", "dev", "development"} for value in normalized)
 
 
 def compute_file_hash(package_path: str, algorithm: str) -> str:
@@ -56,7 +68,7 @@ def build_package_fingerprint(package_path: str, assets: list[ParsedAsset]) -> P
     )
 
 
-def identify_package(package_name: str, fingerprint: PackageFingerprint) -> PackageIdentity:
+def identify_package(package_name: str, fingerprint: PackageFingerprint, assets: list[ParsedAsset] | None = None) -> PackageIdentity:
     if fingerprint.asset_count == 0 or fingerprint.guid_count == 0:
         return PackageIdentity(
             lookup_status="resolved",
@@ -108,9 +120,21 @@ def identify_package(package_name: str, fingerprint: PackageFingerprint) -> Pack
 
     guid_match = _match_by_guids(catalog_rows, set(fingerprint.guid_values), fingerprint.guid_count)
     if guid_match is not None:
-        row, guid_coverage, overlap, matched_version = guid_match
+        row, guid_coverage, overlap, matched_version, matched_guids = guid_match
         recognition_status = _determine_guid_match_status(row, guid_coverage, overlap)
-        return _build_catalog_identity(row, recognition_status, "guids", package_name, guid_coverage=guid_coverage, matched_version=matched_version)
+        matched_guid_examples = None
+        matched_file_examples = None
+        if assets and matched_guids:
+            guids = []
+            pathnames = []
+            for asset in assets:
+                if asset.guid in matched_guids and len(guids) < 3:
+                    guids.append(asset.guid)
+                    pathnames.append(asset.pathname)
+            if guids:
+                matched_guid_examples = guids
+                matched_file_examples = pathnames
+        return _build_catalog_identity(row, recognition_status, "guids", package_name, guid_coverage=guid_coverage, matched_version=matched_version, matched_guid_examples=matched_guid_examples, matched_file_pathnames=matched_file_examples)
 
     return PackageIdentity(
         lookup_status="resolved",
@@ -139,15 +163,38 @@ def identify_fingerprint_payload(payload: dict[str, Any]) -> PackageIdentity:
         unsafe_asset_count=max(0, int(payload.get("unsafeAssetCount", 0))),
     )
     package_name = str(payload.get("packageName", "package.unitypackage")) or "package.unitypackage"
-    return identify_package(package_name, fingerprint)
+    
+    assets = None
+    if "assets" in payload and isinstance(payload["assets"], list):
+        assets = [
+            ParsedAsset(
+                asset_id=str(asset.get("assetId", "")),
+                guid=str(asset.get("guid", "")),
+                pathname=str(asset.get("pathname", "")),
+                size=int(asset.get("size", 0)),
+                tar_member_name="",
+                has_meta=bool(asset.get("hasMeta", False)),
+                meta_member_name=None,
+                safe_path=bool(asset.get("safePath", True)),
+            )
+            for asset in payload["assets"]
+            if isinstance(asset, dict)
+        ]
+    
+    return identify_package(package_name, fingerprint, assets)
 
 
 def load_identity_catalog(catalog_url: str) -> list[dict[str, str]] | None:
     global _catalog_cache
 
-    cache_ttl_seconds = max(30.0, float(os.getenv("UNITYPACKAGE_BROWSER_IDENTITY_CACHE_SECONDS", "300")))
+    raw_cache_ttl = os.getenv("UNITYPACKAGE_BROWSER_IDENTITY_CACHE_SECONDS")
+    if raw_cache_ttl is not None:
+        cache_ttl_seconds = max(0.0, float(raw_cache_ttl))
+    else:
+        cache_ttl_seconds = 0.0 if _is_dev_mode() else 300.0
+
     now = time.time()
-    if _catalog_cache and now - _catalog_cache[0] < cache_ttl_seconds:
+    if cache_ttl_seconds > 0 and _catalog_cache and now - _catalog_cache[0] < cache_ttl_seconds:
         return _catalog_cache[1]
 
     timeout = float(os.getenv("UNITYPACKAGE_BROWSER_IDENTITY_TIMEOUT_SECONDS", "5"))
@@ -157,21 +204,25 @@ def load_identity_catalog(catalog_url: str) -> list[dict[str, str]] | None:
     except (TimeoutError, URLError, ValueError):
         return _catalog_cache[1] if _catalog_cache else None
 
-    _catalog_cache = (now, rows)
+    if cache_ttl_seconds > 0:
+        _catalog_cache = (now, rows)
+    else:
+        _catalog_cache = None
+
     return rows
 
 
 def _match_by_hash(rows: list[dict[str, str]], fingerprint: PackageFingerprint) -> tuple[dict[str, str], str | None] | None:
     known_hashes = {fingerprint.md5.lower(), fingerprint.sha256.lower()}
     for row in rows:
-        for candidate_hash, candidate_version in _parse_versioned_values(row.get("Known hashes", ""), _normalize_hash):
+        for candidate_hash, candidate_version in _parse_algorithmic_hashes(row.get("Known hashes", "")):
             if candidate_hash in known_hashes:
                 return row, candidate_version
     return None
 
 
-def _match_by_guids(rows: list[dict[str, str]], package_guid_set: set[str], package_guid_count: int) -> tuple[dict[str, str], float, int, str | None] | None:
-    best_match: tuple[dict[str, str], float, int, str | None] | None = None
+def _match_by_guids(rows: list[dict[str, str]], package_guid_set: set[str], package_guid_count: int) -> tuple[dict[str, str], float, int, str | None, set[str]] | None:
+    best_match: tuple[dict[str, str], float, int, str | None, set[str]] | None = None
     for row in rows:
         for known_guid_set, candidate_version in _guid_match_candidates(row.get("Known GUIDs", "")):
             if not known_guid_set:
@@ -183,11 +234,13 @@ def _match_by_guids(rows: list[dict[str, str]], package_guid_set: set[str], pack
 
             coverage = overlap / len(known_guid_set)
             if coverage == 1.0:
-                return row, coverage, overlap, candidate_version
+                matched_guids = package_guid_set & known_guid_set
+                return row, coverage, overlap, candidate_version, matched_guids
 
             is_better_match = best_match is None or coverage > best_match[1] or (coverage == best_match[1] and overlap > best_match[2])
             if len(known_guid_set) >= 3 and overlap >= 2 and is_better_match:
-                best_match = (row, coverage, overlap, candidate_version)
+                matched_guids = package_guid_set & known_guid_set
+                best_match = (row, coverage, overlap, candidate_version, matched_guids)
 
     return best_match
 
@@ -199,33 +252,50 @@ def _build_catalog_identity(
     package_name: str,
     guid_coverage: float | None = None,
     matched_version: str | None = None,
+    matched_guid_examples: list[str] | None = None,
+    matched_file_pathnames: list[str] | None = None,
 ) -> PackageIdentity:
     display_name = _optional_str(row.get("Name"))
     author = _optional_str(row.get("Author"))
     thumbnail_url = _optional_str(row.get("Thumbnail URL"))
-    source_links = _parse_source_links(_row_value(row, "Source", "Sources", "Source URL", "Source URLs"))
+    source_links_column, source_links_raw = _row_value_with_key(
+        row,
+        "Source links",
+        "Source Links",
+        "Social links",
+        "Social Links",
+        "Social",
+        "Social URL",
+        "Social URLs",
+        "Source",
+        "Sources",
+        "Source URL",
+        "Source URLs",
+    )
+    source_links = _parse_source_links(source_links_raw)
     version = matched_version or _optional_str(_row_value(row, "Version", "version"))
     base_name = display_name
+    package_label = display_name or package_name
 
     if recognition_status == "known-good":
-        message = f"{display_name or package_name} matches a known untampered package by hash."
+        if version:
+            message = f"GUID lineage matches a known file from {package_label}, and the package hash matches a known hash of the cataloged {version} release."
+        else:
+            message = f"GUID lineage matches a known file from {package_label}, and the package hash matches a known cataloged release."
     elif recognition_status == "known-custom":
-        message = f"{display_name or package_name} matches a known base by GUIDs, but the package hash differs from the cataloged releases."
+        message = f"{package_label} matches a known base by GUIDs, but the package hash differs from the cataloged releases."
     elif recognition_status == "corrupt":
         if guid_coverage and guid_coverage > 0:
             coverage_percent = int(round(guid_coverage * 100))
-            message = f"{display_name or package_name} only partially matches a known base by GUIDs ({coverage_percent}% coverage) and may be tampered or incomplete."
+            message = f"{package_label} only partially matches a known base by GUIDs ({coverage_percent}% coverage) and may be tampered or incomplete."
         else:
-            message = f"{display_name or package_name} appears incomplete or corrupt."
+            message = f"{package_label} appears incomplete or corrupt."
     else:
         coverage_percent = int(round((guid_coverage or 0.0) * 100))
         if guid_coverage and guid_coverage > 0:
-            message = f"{display_name or package_name} partially matches a known base by GUIDs ({coverage_percent}% coverage) and may be a custom variant."
+            message = f"{package_label} partially matches a known base by GUIDs ({coverage_percent}% coverage) and may be a custom variant."
         else:
-            message = f"{display_name or package_name} did not match any known hash or GUID lineage in the catalog."
-
-    if author:
-        message = f"{message} Catalog author: {author}."
+            message = f"{package_label} did not match any known hash or GUID lineage in the catalog."
 
     return PackageIdentity(
         lookup_status="resolved",
@@ -238,6 +308,10 @@ def _build_catalog_identity(
         thumbnail_url=thumbnail_url,
         source_links=source_links,
         message=message,
+        matched_guid_examples=matched_guid_examples,
+        matched_file_pathnames=matched_file_pathnames,
+        source_links_column=source_links_column,
+        source_links_raw=_optional_str(source_links_raw),
     )
 
 
@@ -265,18 +339,59 @@ def _row_value(row: dict[str, str], *keys: str) -> str:
     return ""
 
 
+def _row_value_with_key(row: dict[str, str], *keys: str) -> tuple[str | None, str]:
+    for key in keys:
+        value = row.get(key)
+        if isinstance(value, str) and value.strip():
+            return key, value
+    return None, ""
+
+
 def _parse_source_links(value: str) -> list[PackageSourceLink]:
     source_links: list[PackageSourceLink] = []
     for item in _split_source_values(value):
-        normalized_url = _normalize_source_url(item)
+        explicit_label, raw_url = _parse_labeled_link(item)
+        normalized_url = _normalize_source_url(raw_url)
         if not normalized_url:
             continue
-        source_links.append(PackageSourceLink(label=_label_for_source_url(normalized_url), url=normalized_url))
+        source_links.append(
+            PackageSourceLink(
+                label=explicit_label or _label_for_source_url(normalized_url),
+                url=normalized_url,
+            )
+        )
     return source_links
 
 
 def _split_source_values(value: str) -> list[str]:
-    return [item.strip() for item in value.split("|") if item.strip()]
+    normalized = value.replace("\r", "\n")
+    split_pattern = r"\n|\||;|,(?=\s*(?:https?://|www\.|\[|[A-Za-z0-9 _-]+\s*[:=]\s*(?:https?://|www\.)))"
+    return [item.strip() for item in re.split(split_pattern, normalized) if item.strip()]
+
+
+def _parse_labeled_link(value: str) -> tuple[str | None, str]:
+    candidate = value.strip()
+    if not candidate:
+        return None, ""
+
+    # Support Markdown-style links: [Label](https://example.com)
+    if candidate.startswith("[") and "](" in candidate and candidate.endswith(")"):
+        closing_bracket = candidate.find("](")
+        label = _optional_str(candidate[1:closing_bracket])
+        url = candidate[closing_bracket + 2 : -1].strip()
+        return label, url
+
+    # Support label=url and label:url formats.
+    for separator in ("=", ":"):
+        left, found, right = candidate.partition(separator)
+        if not found:
+            continue
+        left_value = left.strip()
+        right_value = right.strip()
+        if left_value and right_value and _looks_like_url(right_value):
+            return _optional_str(left_value), right_value
+
+    return None, candidate
 
 
 def _normalize_source_url(value: str) -> str | None:
@@ -284,10 +399,25 @@ def _normalize_source_url(value: str) -> str | None:
     if not candidate:
         return None
 
+    if candidate.startswith("www."):
+        candidate = f"https://{candidate}"
+
+    if "://" not in candidate and _looks_like_url(candidate):
+        candidate = f"https://{candidate}"
+
     parsed = urlparse(candidate)
     if parsed.scheme in {"http", "https"} and parsed.netloc:
         return candidate
     return None
+
+
+def _looks_like_url(value: str) -> bool:
+    candidate = value.strip().lower()
+    if not candidate:
+        return False
+    if candidate.startswith(("http://", "https://", "www.")):
+        return True
+    return "." in candidate and " " not in candidate
 
 
 def _label_for_source_url(value: str) -> str:
@@ -348,6 +478,35 @@ def _parse_versioned_values(value: str, normalizer: Any) -> list[tuple[str, str 
 def _split_multi_value(value: str) -> list[str]:
     normalized = value.replace(";", ":")
     return [item.strip() for item in normalized.split(":") if item.strip()]
+
+
+def _parse_algorithmic_hashes(value: str) -> list[tuple[str, str | None]]:
+    """Parse hashes in formats like 'sha256=hash=1.0' or 'md5=hash=v1.11' or plain hashes."""
+    parsed_hashes: list[tuple[str, str | None]] = []
+    for item in _split_multi_value(value):
+        item = item.strip()
+        if not item:
+            continue
+        
+        # Check if this starts with algorithm prefix (sha256=, md5=, etc.)
+        parts = item.split("=")
+        if len(parts) >= 2 and parts[0].lower() in {"sha256", "md5", "sha1", "sha512"}:
+            # Format: algorithm=hash=version
+            algorithm = parts[0].lower()
+            hash_part = parts[1]
+            version = "=".join(parts[2:]) if len(parts) > 2 else None
+            version = _optional_str(version) if version else None
+            normalized_hash = hash_part.strip().lower()
+        else:
+            # Format: hash (or hash=version)
+            raw_value, separator, raw_version = item.partition("=")
+            normalized_hash = raw_value.strip().lower()
+            version = _optional_str(raw_version) if separator else None
+        
+        if normalized_hash:
+            parsed_hashes.append((normalized_hash, version))
+    
+    return parsed_hashes
 
 
 def _normalize_hash(value: str) -> str:

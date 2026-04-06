@@ -46,6 +46,10 @@ class PackageIdentity:
     thumbnail_url: str | None
     source_links: list[PackageSourceLink]
     message: str
+    matched_guid_examples: list[str] | None = None
+    matched_file_pathnames: list[str] | None = None
+    source_links_column: str | None = None
+    source_links_raw: str | None = None
 
 
 @dataclass(slots=True)

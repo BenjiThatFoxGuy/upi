@@ -19,6 +19,11 @@ export interface PackageFingerprint {
   unsafeAssetCount: number
 }
 
+export interface PackageSourceLink {
+  label: string
+  url: string
+}
+
 export interface PackageIdentity {
   lookupStatus: 'pending' | 'resolved' | 'unavailable'
   recognitionStatus: 'known-good' | 'known-custom' | 'likely-custom' | 'unrecognized' | 'corrupt' | 'unknown'
@@ -28,8 +33,12 @@ export interface PackageIdentity {
   version?: string
   author?: string
   thumbnailUrl?: string
-  sourceLinks?: Array<{ label: string; url: string }>
+  sourceLinks: PackageSourceLink[]
   message: string
+  matchedGuidExamples?: string[]
+  matchedFilePathnames?: string[]
+  sourceLinksColumn?: string
+  sourceLinksRaw?: string
 }
 
 export interface IndexedPackage {

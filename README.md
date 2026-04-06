@@ -46,7 +46,7 @@ Package identity lookup now reads from a remotely hosted CSV catalog with `UNITY
 
 The old schema is still supported: `Known hashes` and `Known GUIDs` can remain plain colon-separated values. You can now also annotate individual entries with versions inside the same cells using `value=version`, for example `hashA=1.0:hashB=2.0` or `guidA=1.0:guidB=1.0:guidC=2.0`. Semicolons are accepted too, but colons remain the recommended separator for Google Sheets CSV export.
 
-The optional `Source` column can contain one or more product URLs separated by `|`, for example `https://gumroad...|https://jinxxy...`. The UI parses these into source links in the metadata card and labels known hosts such as Gumroad, Jinxxy, and Itch.io automatically.
+The optional `Source links` column can contain one or more product URLs separated by `|`, for example `https://gumroad...|https://jinxxy...`. Legacy names such as `Source`, `Sources`, `Source URL`, and `Source URLs` are still accepted. The UI parses these into source links in the metadata card and labels known hosts such as Gumroad, Jinxxy, and Itch.io automatically.
 
 Hash mismatch interpretation is now derived by the app rather than stored in the sheet. Exact hash matches are treated as known-good. Full GUID lineage with a hash mismatch is treated as a modified/custom variant. Strong partial GUID lineage is treated as possibly tampered or incomplete. If neither a hash nor GUID lineage matches, the package remains unknown.
 

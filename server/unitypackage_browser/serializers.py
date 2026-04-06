@@ -33,6 +33,10 @@ def serialize_identity(identity: PackageIdentity) -> dict[str, object]:
         "thumbnailUrl": identity.thumbnail_url,
         "sourceLinks": [serialize_source_link(source_link) for source_link in identity.source_links],
         "message": identity.message,
+        "matchedGuidExamples": identity.matched_guid_examples,
+        "matchedFilePathnames": identity.matched_file_pathnames,
+        "sourceLinksColumn": identity.source_links_column,
+        "sourceLinksRaw": identity.source_links_raw,
     }
 
 

@@ -79,7 +79,7 @@ class PackageStore:
     def _store_package(self, session_id: str, package_path: Path, package_name: str) -> StoredPackage:
         assets = parse_package(str(package_path))
         fingerprint = build_package_fingerprint(str(package_path), assets)
-        identity = identify_package(package_name, fingerprint)
+        identity = identify_package(package_name, fingerprint, assets)
 
         parsed_package = StoredPackage(
             session_id=session_id,

@@ -1,7 +1,11 @@
-import { startTransition, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
+import { startTransition, type ReactNode, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import { appConfig } from './config/appConfig'
 import type { BackendHealth, IndexedPackage, PackageAsset, PackageIdentity, ServerConfig, WorkerResponse } from './types/unitypackage'
+
+function IdentityMessageValue({ children }: { children: string }) {
+  return <span className="identity-message-value">{children}</span>
+}
 
 function resolveBackendBaseUrl() {
   const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL
@@ -165,6 +169,7 @@ function createUnavailableIdentity(message: string): PackageIdentity {
     lookupStatus: 'unavailable',
     recognitionStatus: 'unknown',
     matchType: 'none',
+    sourceLinks: [],
     message,
   }
 }
@@ -207,6 +212,181 @@ function getIdentityMeta(identity: PackageIdentity) {
 
 function getSourceLinkKey(sourceLink: { label: string; url: string }) {
   return `${sourceLink.label}:${sourceLink.url}`
+}
+
+function FingerprintHover({ sha256 }: { sha256: string }) {
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(sha256)
+      setCopyState('copied')
+    } catch {
+      setCopyState('failed')
+    }
+
+    window.setTimeout(() => {
+      setCopyState('idle')
+    }, 1600)
+  }
+
+  return (
+    <span className="hover-card hover-card-above">
+      <button type="button" className="hover-card-trigger identity-fingerprint-trigger" aria-haspopup="dialog" aria-label="Show full SHA-256 fingerprint">
+        SHA-256 {sha256.slice(0, 12)}...
+      </button>
+      <span className="hover-card-panel hover-card-panel-wide">
+        <span className="hover-card-overline">Full SHA-256</span>
+        <code className="hover-card-code">{sha256}</code>
+        <span className="hover-card-actions">
+          <button type="button" className="secondary hover-card-button" onClick={handleCopy}>
+            {copyState === 'copied' ? 'Copied' : copyState === 'failed' ? 'Copy failed' : 'Copy hash'}
+          </button>
+        </span>
+      </span>
+    </span>
+  )
+}
+
+function renderIdentityMessage(identity: PackageIdentity) {
+  if (identity.recognitionStatus === 'known-good') {
+    if (identity.displayName && identity.version) {
+      return (
+        <>
+          GUID lineage matches a known file from <IdentityMessageValue>{identity.displayName}</IdentityMessageValue>, and the package hash matches a known hash of the cataloged <IdentityMessageValue>{identity.version}</IdentityMessageValue> release.
+        </>
+      )
+    }
+
+    if (identity.displayName) {
+      return (
+        <>
+          GUID lineage matches a known file from <IdentityMessageValue>{identity.displayName}</IdentityMessageValue>, and the package hash matches a known cataloged release.
+        </>
+      )
+    }
+  }
+
+  return identity.message
+}
+
+function renderIdentityExplanation(identity: PackageIdentity): ReactNode {
+  if (identity.recognitionStatus === 'known-good' && identity.displayName && identity.version) {
+    return (
+      <>
+        This looks like the same package we already know as <IdentityMessageValue>{identity.displayName}</IdentityMessageValue>, specifically the cataloged <IdentityMessageValue>{identity.version}</IdentityMessageValue> release.
+        <span className="hover-card-support">
+          If this did not match, it would usually mean the package is custom, edited, or possibly incomplete/tampered. If you already know it was customized, for example for a commission, that is typically expected and not a problem.
+        </span>
+      </>
+    )
+  }
+
+  if (identity.recognitionStatus === 'known-good' && identity.displayName) {
+    return (
+      <>
+        This looks like the same package we already know as <IdentityMessageValue>{identity.displayName}</IdentityMessageValue>.
+        <span className="hover-card-support">
+          If this did not match, it would usually mean the package is custom, edited, or possibly incomplete/tampered. If you already know it was customized, for example for a commission, that is typically expected and not a problem.
+        </span>
+      </>
+    )
+  }
+
+  if (identity.recognitionStatus === 'known-custom') {
+    return (
+      <>
+        We found at least one familiar internal file that lines up with <IdentityMessageValue>{identity.displayName ?? 'a known base package'}</IdentityMessageValue>, but the full package fingerprint differs from cataloged releases.
+        <span className="hover-card-support">
+          That usually means a customized build. If you expected edits, like a commission or private variant, this is typically fine.
+        </span>
+        {identity.matchedFilePathnames && identity.matchedFilePathnames.length > 0 ? (
+          <span className="hover-card-support">
+            {identity.matchedFilePathnames.map((pathname, index) => (
+              <div key={`${pathname}-${index}`}>
+                {index === 0 ? 'Matched files: ' : ''}
+                <IdentityMessageValue>{pathname}</IdentityMessageValue>
+                {identity.matchedGuidExamples && identity.matchedGuidExamples[index] ? (
+                  <>
+                    {' '}
+                    <span style={{ opacity: 0.7 }}>({identity.matchedGuidExamples[index]})</span>
+                  </>
+                ) : null}
+              </div>
+            ))}
+          </span>
+        ) : null}
+      </>
+    )
+  }
+
+  if (identity.recognitionStatus === 'likely-custom') {
+    return (
+      <>
+        We found familiar internal files from <IdentityMessageValue>{identity.displayName ?? 'a known base package'}</IdentityMessageValue>, but the overall package still differs from any exact cataloged release.
+        <span className="hover-card-support">
+          This often indicates a custom variant. If this was not expected, verify where the package came from.
+        </span>
+        {identity.matchedFilePathnames && identity.matchedFilePathnames.length > 0 ? (
+          <span className="hover-card-support">
+            {identity.matchedFilePathnames.map((pathname, index) => (
+              <div key={`${pathname}-${index}`}>
+                {index === 0 ? 'Example matched files: ' : ''}
+                <IdentityMessageValue>{pathname}</IdentityMessageValue>
+                {identity.matchedGuidExamples && identity.matchedGuidExamples[index] ? (
+                  <>
+                    {' '}
+                    <span style={{ opacity: 0.7 }}>({identity.matchedGuidExamples[index]})</span>
+                  </>
+                ) : null}
+              </div>
+            ))}
+          </span>
+        ) : null}
+      </>
+    )
+  }
+
+  if (identity.recognitionStatus === 'corrupt') {
+    return (
+      <>
+        The package appears incomplete or only partially lines up with a known package.
+        <span className="hover-card-support">
+          This can happen with heavy edits, but it can also mean a broken or tampered archive. If unexpected, treat it cautiously.
+        </span>
+      </>
+    )
+  }
+
+  if (identity.recognitionStatus === 'unknown' || identity.recognitionStatus === 'unrecognized') {
+    return (
+      <>
+        We could not connect this package to any known cataloged lineage.
+        <span className="hover-card-support">
+          That can still be normal for private or original work. Another common reason is that this specific package has not been cataloged yet.
+        </span>
+        <span className="hover-card-support">
+          The catalog is maintained with broad coverage and a lot of manual effort, but it is not a guarantee that every release is already indexed.
+        </span>
+      </>
+    )
+  }
+
+  return renderIdentityMessage(identity)
+}
+
+function IdentityMessageHelp({ identity }: { identity: PackageIdentity }) {
+  return (
+    <span className="hover-card hover-card-above hover-card-block">
+      <button type="button" className="hover-card-trigger identity-message-trigger" aria-haspopup="dialog" aria-label="Explain identity match details">
+        {renderIdentityMessage(identity)}
+      </button>
+      <span className="hover-card-panel hover-card-panel-wide">
+        <span className="hover-card-overline">What this means</span>
+        <span className="hover-card-body">{renderIdentityExplanation(identity)}</span>
+      </span>
+    </span>
+  )
 }
 
 function IdentityThumbnail({ identity, alt }: { identity: PackageIdentity; alt: string }) {
@@ -521,6 +701,7 @@ function App() {
           body: JSON.stringify({
             packageName: localPackage.packageName,
             ...localPackage.fingerprint,
+            assets: localPackage.assets,
           }),
         })
 
@@ -530,9 +711,20 @@ function App() {
 
         const identity = (await response.json()) as PackageIdentity
         if (!cancelled) {
-          setPkg((current) => (current && current.source === 'local' && current.fingerprint.sha256 === localPackage.fingerprint.sha256
-            ? { ...current, identity }
-            : current))
+          setPkg((current) => {
+            if (!current || current.source !== 'local' || current.fingerprint.sha256 !== localPackage.fingerprint.sha256) {
+              return current
+            }
+
+            return {
+              ...current,
+              identity: {
+                ...identity,
+                matchedGuidExamples: identity.matchedGuidExamples || current.identity.matchedGuidExamples,
+                matchedFilePathnames: identity.matchedFilePathnames || current.identity.matchedFilePathnames,
+              },
+            }
+          })
         }
       } catch {
         if (!cancelled) {
@@ -953,9 +1145,9 @@ function App() {
             <strong>{pkg ? getIdentityTitle(pkg.identity) : 'No package indexed yet'}</strong>
             <p>{pkg ? getIdentityMeta(pkg.identity) : 'Hash and GUID recognition will appear here.'}</p>
             {pkg?.identity.author ? <p className="identity-author">Catalog author: {pkg.identity.author}</p> : null}
-            {pkg?.identity.sourceLinks?.length ? (
+            {pkg?.identity.sourceLinks.length ? (
               <p className="identity-sources">
-                <span>Source:</span>{' '}
+                <span>{pkg.identity.sourceLinks.length === 1 ? 'Source:' : 'Sources:'}</span>{' '}
                 {pkg.identity.sourceLinks.map((sourceLink, index) => (
                   <span key={getSourceLinkKey(sourceLink)}>
                     {index > 0 ? ' | ' : null}
@@ -966,8 +1158,8 @@ function App() {
                 ))}
               </p>
             ) : null}
-            {pkg ? <p className="identity-fingerprint">SHA-256 {pkg.fingerprint.sha256.slice(0, 12)}... · {pkg.fingerprint.guidCount} GUIDs</p> : null}
-            {pkg ? <p className="identity-message">{pkg.identity.message}</p> : null}
+            {pkg ? <p className="identity-fingerprint"><FingerprintHover sha256={pkg.fingerprint.sha256} /> · {pkg.fingerprint.guidCount} GUIDs</p> : null}
+            {pkg ? <p className="identity-message"><IdentityMessageHelp identity={pkg.identity} /></p> : null}
           </article>
         </div>
       </section>

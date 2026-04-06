@@ -139,11 +139,155 @@
   margin-top: 10px;
 }
 
+.hover-card {
+  position: relative;
+  display: inline-flex;
+  max-width: 100%;
+}
+
+.hover-card-block {
+  display: block;
+}
+
+.hover-card-trigger {
+  min-height: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  line-height: inherit;
+  text-align: left;
+  cursor: help;
+}
+
+.hover-card-trigger:hover:not(:disabled),
+.hover-card-trigger:focus-visible {
+  transform: none;
+  filter: none;
+  box-shadow: none;
+}
+
+.hover-card-panel {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 12px);
+  z-index: 10;
+  width: min(360px, calc(100vw - 64px));
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--md-sys-shape-corner-large);
+  background: color-mix(in srgb, var(--md-sys-color-surface-container-highest) 94%, var(--md-sys-color-surface));
+  box-shadow: var(--md-sys-elevation-level3);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(6px) scale(0.98);
+  transition: opacity 160ms ease, transform 160ms ease, visibility 160ms ease;
+}
+
+.hover-card-panel::after {
+  content: '';
+  position: absolute;
+  left: 24px;
+  bottom: -9px;
+  width: 18px;
+  height: 18px;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--md-sys-color-surface-container-highest) 94%, var(--md-sys-color-surface));
+  transform: rotate(45deg);
+}
+
+.hover-card:hover .hover-card-panel,
+.hover-card:focus-within .hover-card-panel,
+.hover-card-panel:hover {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translateY(0) scale(1);
+}
+
+.hover-card-panel-wide {
+  width: min(420px, calc(100vw - 64px));
+}
+
+.hover-card-overline {
+  display: block;
+  color: var(--label);
+  text-transform: uppercase;
+  letter-spacing: var(--md-sys-typescale-label-small-tracking);
+  font-size: var(--md-sys-typescale-label-small-size);
+  line-height: var(--md-sys-typescale-label-small-line-height);
+  font-weight: 600;
+}
+
+.hover-card-body,
+.hover-card-support {
+  display: block;
+  color: var(--muted);
+}
+
+.hover-card-body {
+  margin-top: 8px;
+}
+
+.hover-card-support {
+  margin-top: 10px;
+  font-size: var(--md-sys-typescale-body-medium-size);
+  line-height: var(--md-sys-typescale-body-medium-line-height);
+}
+
+.hover-card-code {
+  display: block;
+  margin-top: 10px;
+  padding: 12px;
+  border-radius: var(--md-sys-shape-corner-medium);
+  background: var(--preview-bg);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: var(--md-sys-typescale-label-small-size);
+  line-height: 1.45;
+  word-break: break-all;
+}
+
+.hover-card-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+.hover-card-button {
+  min-height: 2.25rem;
+  padding: 0 16px;
+}
+
+.identity-message-value {
+  color: var(--md-sys-color-primary);
+  font-weight: 600;
+}
+
 .identity-fingerprint {
   margin-top: 8px;
   font-family: var(--mono);
   font-size: var(--md-sys-typescale-label-small-size);
   line-height: var(--md-sys-typescale-label-small-line-height);
+}
+
+.identity-fingerprint-trigger {
+  color: inherit;
+  font-family: inherit;
+  text-decoration: underline dotted color-mix(in srgb, var(--md-sys-color-primary) 48%, transparent);
+  text-underline-offset: 0.18em;
+}
+
+.identity-message-trigger {
+  color: inherit;
+  white-space: normal;
+  text-decoration: underline dotted color-mix(in srgb, var(--md-sys-color-primary) 40%, transparent);
+  text-underline-offset: 0.16em;
 }
 
 .identity-known-good {

@@ -71,6 +71,7 @@ function createPendingIdentity(): PackageIdentity {
     lookupStatus: 'pending',
     recognitionStatus: 'unknown',
     matchType: 'none',
+    sourceLinks: [],
     message: 'Package identity will be checked when the backend can reach the catalog.',
   }
 }
