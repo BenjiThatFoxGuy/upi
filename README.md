@@ -1,22 +1,56 @@
 # unitypackage-browser-web
 
-Unity package inspector with a React frontend and a Flask backend.
+A web-based inspector for `.unitypackage` files. Upload a package (or provide a URL) to browse its assets, extract individual files, download a reconstructed ZIP, and optionally identify the package against a known catalog.
+
+**Tech stack:** React + TypeScript (Vite) frontend · Flask (Python 3.10) backend
+
+---
+
+## Features
+
+- Browse the full asset tree inside any `.unitypackage`
+- Extract and download individual assets or the whole package as a ZIP
+- SHA-256 and GUID fingerprinting for package identity lookup
+- Identify packages against a remotely hosted CSV catalog; matches exact hashes, falls back to GUID lineage for modified variants
+- Local (in-browser web worker) indexing for small files; backend indexing for larger ones
+- Single-container production build
+
+---
+
+## Running with Docker
+
+The easiest way to get a production build running:
+
+```bash
+docker compose up --build
+```
+
+The app will be available at `http://localhost:8000`.
+
+To build and run the image directly:
+
+```bash
+docker build -t unitypackage-browser .
+docker run -p 8000:8000 unitypackage-browser
+```
+
+---
 
 ## Local development
 
-Quick start scripts from the repo root:
+Quick-start scripts from the repo root start both servers together:
 
 ```bash
+# Linux / macOS
 ./dev.sh
-```
 
-```bat
+# Windows
 dev.bat
 ```
 
-`dev.sh` supports Linux and macOS. On Linux it assumes a Codespaces-style Ubuntu environment and will create/use `.venv`, install backend requirements, install frontend dependencies if needed, and run both dev servers together. `dev.bat` is for local Windows development and prefers `.venv-1`, then `.venv`, before falling back to `py -3`.
+`dev.sh` creates/reuses a `.venv`, installs backend requirements, installs frontend dependencies if needed, and runs both dev servers. `dev.bat` prefers `.venv-1`, then `.venv`, before falling back to `py -3`.
 
-Frontend:
+### Frontend only
 
 ```bash
 cd web
@@ -24,9 +58,9 @@ npm install
 npm run dev
 ```
 
-The Vite dev server is configured to listen on your LAN at port `5173`.
+The Vite dev server listens on `0.0.0.0:5173` (LAN-accessible).
 
-Backend:
+### Backend only
 
 ```bash
 cd server
@@ -34,38 +68,67 @@ python -m pip install -r requirements.txt
 python app.py
 ```
 
-The Flask dev server already listens on `0.0.0.0:8000`, so other devices on your network can reach it.
+The Flask dev server listens on `0.0.0.0:8000`.
 
-By default, the frontend derives the API base URL from the browser hostname and port `8000`, so opening `http://<your-lan-ip>:5173` from another device will target `http://<your-lan-ip>:8000`. Override with `VITE_API_BASE_URL` if needed.
+### Connecting the two
 
-Frontend behavior is configured in `web/src/config/appConfig.ts`. The first exposed option, `indexingMode`, controls whether the UI lets the user choose local versus backend indexing or routes that choice automatically by file size.
+The frontend automatically derives the API base URL from the browser hostname on port `8000`. Opening `http://<your-lan-ip>:5173` from another device will therefore target `http://<your-lan-ip>:8000`. Override this with the `VITE_API_BASE_URL` environment variable if needed.
 
-Backend UI behavior is configured through environment variables. Theme enforcement defaults to dark-only with `UNITYPACKAGE_BROWSER_THEME=dark` and `UNITYPACKAGE_BROWSER_ENFORCE_THEME=true`.
+---
 
-Package identity lookup now reads from a remotely hosted CSV catalog with `UNITYPACKAGE_BROWSER_IDENTITY_CSV_URL`. By default it points at the published Google Sheets CSV currently in use. The backend matches exact known hashes first, then falls back to known GUID lineage so modified packages can still be recognized when the archive hash no longer matches a cataloged release.
+## Configuration
 
-The old schema is still supported: `Known hashes` and `Known GUIDs` can remain plain colon-separated values. You can now also annotate individual entries with versions inside the same cells using `value=version`, for example `hashA=1.0:hashB=2.0` or `guidA=1.0:guidB=1.0:guidC=2.0`. Semicolons are accepted too, but colons remain the recommended separator for Google Sheets CSV export.
+### Frontend
 
-The optional `Source links` column can contain one or more product URLs separated by `|`, for example `https://gumroad...|https://jinxxy...`. Legacy names such as `Source`, `Sources`, `Source URL`, and `Source URLs` are still accepted. The UI parses these into source links in the metadata card and labels known hosts such as Gumroad, Jinxxy, and Itch.io automatically.
+`web/src/config/appConfig.ts` is the single place to tune frontend behaviour.
 
-Hash mismatch interpretation is now derived by the app rather than stored in the sheet. Exact hash matches are treated as known-good. Full GUID lineage with a hash mismatch is treated as a modified/custom variant. Strong partial GUID lineage is treated as possibly tampered or incomplete. If neither a hash nor GUID lineage matches, the package remains unknown.
+| Option | Description |
+|---|---|
+| `indexingMode` | `"local"` - always use the in-browser worker; `"backend"` - always use the server; `"auto"` - choose based on file size |
 
-## Reusable API
+### Backend (environment variables)
 
-The backend now exposes a cleaner package-oriented API alongside the original compatibility routes, so you can reuse it from other projects without coupling to this UI. Preferred endpoints:
+| Variable | Default | Description |
+|---|---|---|
+| `UNITYPACKAGE_BROWSER_THEME` | `dark` | Default UI theme (`dark` or `light`) |
+| `UNITYPACKAGE_BROWSER_ENFORCE_THEME` | `true` | When `true`, the user cannot switch themes |
+| `UNITYPACKAGE_BROWSER_IDENTITY_CSV_URL` | *(built-in Google Sheets URL)* | URL of the package catalog CSV used for identity lookup |
 
-- `POST /api/packages/index` with multipart field `package`
-- `POST /api/packages/index-url` with JSON body `{ "url": "https://.../file.unitypackage" }`
-- `GET /api/packages/<session_id>` to retrieve the indexed package manifest again
-- `GET /api/packages/<session_id>/assets/<asset_id>/download` to fetch one extracted asset
-- `GET /api/packages/<session_id>/download.zip` to fetch the reconstructed ZIP
-- `DELETE /api/packages/<session_id>` to discard the temporary indexed package
-- `POST /api/identity/lookup` to resolve a fingerprint payload without uploading a package
+### Identity catalog CSV format
 
-This keeps the current web app working while giving future projects, such as a stash browser backed by a database of direct package links, a stable API surface focused on indexing and package contents rather than UI concerns.
+The CSV is fetched at runtime from `UNITYPACKAGE_BROWSER_IDENTITY_CSV_URL`. Expected columns:
 
-## Current scope
+| Column | Description |
+|---|---|
+| `Known hashes` | Colon-separated SHA-256 hashes. Optionally annotate with a version: `hashA=1.0:hashB=2.0` |
+| `Known GUIDs` | Colon-separated GUIDs, same optional `value=version` annotation |
+| `Source links` *(optional)* | One or more product URLs separated by `\|`. Known hosts (Gumroad, Jinxxy, Itch.io) are labelled automatically. Also accepted as `Source`, `Sources`, `Source URL`, or `Source URLs` |
 
-- Local indexing in a web worker with SHA-256 and GUID fingerprinting
-- Backend indexing, identity lookup, and per-asset downloads through Flask
-- Single-container production build through the root Dockerfile
+Identity matching logic:
+- **Exact hash match** → known-good
+- **Full GUID lineage match, hash mismatch** → modified/custom variant
+- **Partial GUID lineage match** → possibly tampered or incomplete
+- **No match** → unknown
+
+---
+
+## API reference
+
+The backend exposes a package-oriented REST API that can be used independently of this UI.
+
+### Packages
+
+| Method | Endpoint | Body / notes |
+|---|---|---|
+| `POST` | `/api/packages/index` | Multipart form, field `package` - upload a `.unitypackage` file |
+| `POST` | `/api/packages/index-url` | JSON `{ "url": "https://.../file.unitypackage" }` - index from a URL |
+| `GET` | `/api/packages/<session_id>` | Retrieve the indexed package manifest |
+| `GET` | `/api/packages/<session_id>/assets/<asset_id>/download` | Download a single extracted asset |
+| `GET` | `/api/packages/<session_id>/download.zip` | Download the reconstructed ZIP |
+| `DELETE` | `/api/packages/<session_id>` | Discard the temporary indexed package |
+
+### Identity
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/api/identity/lookup` | Resolve a fingerprint payload against the catalog without uploading a package |
