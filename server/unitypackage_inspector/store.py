@@ -18,7 +18,7 @@ from .parser import parse_package
 
 class PackageStore:
     def __init__(self) -> None:
-        self._base_dir = Path(tempfile.gettempdir(), "unitypackage-browser-web")
+        self._base_dir = Path(tempfile.gettempdir(), "unitypackage-inspector")
         self._base_dir.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
         self._sessions: dict[str, StoredPackage] = {}

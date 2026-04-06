@@ -1,5 +1,5 @@
 services:
-  unitypackage-browser:
+  unitypackage-inspector:
     build:
       context: .
       dockerfile: Dockerfile

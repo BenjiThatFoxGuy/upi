@@ -21,7 +21,7 @@ _catalog_cache: tuple[float, list[dict[str, str]]] | None = None
 
 def _is_dev_mode() -> bool:
     env_candidates = (
-        os.getenv("UNITYPACKAGE_BROWSER_DEV", ""),
+        os.getenv("UPI_DEV", ""),
         os.getenv("FLASK_ENV", ""),
         os.getenv("FLASK_DEBUG", ""),
         os.getenv("PYTHON_ENV", ""),
@@ -83,7 +83,7 @@ def identify_package(package_name: str, fingerprint: PackageFingerprint, assets:
             message="No valid Unity assets were found in this package.",
         )
 
-    catalog_url = os.getenv("UNITYPACKAGE_BROWSER_IDENTITY_CSV_URL", DEFAULT_IDENTITY_CSV_URL).strip()
+    catalog_url = os.getenv("UPI_IDENTITY_CSV_URL", DEFAULT_IDENTITY_CSV_URL).strip()
     if not catalog_url:
         return PackageIdentity(
             lookup_status="unavailable",
@@ -187,7 +187,7 @@ def identify_fingerprint_payload(payload: dict[str, Any]) -> PackageIdentity:
 def load_identity_catalog(catalog_url: str) -> list[dict[str, str]] | None:
     global _catalog_cache
 
-    raw_cache_ttl = os.getenv("UNITYPACKAGE_BROWSER_IDENTITY_CACHE_SECONDS")
+    raw_cache_ttl = os.getenv("UPI_IDENTITY_CACHE_SECONDS")
     if raw_cache_ttl is not None:
         cache_ttl_seconds = max(0.0, float(raw_cache_ttl))
     else:
@@ -197,7 +197,7 @@ def load_identity_catalog(catalog_url: str) -> list[dict[str, str]] | None:
     if cache_ttl_seconds > 0 and _catalog_cache and now - _catalog_cache[0] < cache_ttl_seconds:
         return _catalog_cache[1]
 
-    timeout = float(os.getenv("UNITYPACKAGE_BROWSER_IDENTITY_TIMEOUT_SECONDS", "5"))
+    timeout = float(os.getenv("UPI_IDENTITY_TIMEOUT_SECONDS", "5"))
     try:
         with urlopen(catalog_url, timeout=timeout) as response:
             rows = list(csv.DictReader(response.read().decode("utf-8-sig").splitlines()))

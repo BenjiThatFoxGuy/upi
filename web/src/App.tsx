@@ -1123,7 +1123,7 @@ function App() {
 
       <section className="hero-panel">
         <div className="hero-copy">
-          <p className="eyebrow">Unity package inspector</p>
+          <p className="eyebrow">Unitypackage Inspector</p>
           <h1>Inspect, verify, and unpack Unity packages.</h1>
           <p className="lede">Open a package, fingerprint it by hash and GUIDs, compare it against a central catalog, browse its contents, and download individual files.</p>
         </div>

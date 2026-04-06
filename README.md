@@ -1,4 +1,4 @@
-# unitypackage-browser-web
+# Unitypackage Inspector (UPI)
 
 A web-based inspector for `.unitypackage` files. Upload a package (or provide a URL) to browse its assets, extract individual files, download a reconstructed ZIP, and optionally identify the package against a known catalog.
 
@@ -30,8 +30,8 @@ The app will be available at `http://localhost:8000`.
 To build and run the image directly:
 
 ```bash
-docker build -t unitypackage-browser .
-docker run -p 8000:8000 unitypackage-browser
+docker build -t upi .
+docker run -p 8000:8000 upi
 ```
 
 ---
@@ -90,13 +90,13 @@ The frontend automatically derives the API base URL from the browser hostname on
 
 | Variable | Default | Description |
 |---|---|---|
-| `UNITYPACKAGE_BROWSER_THEME` | `dark` | Default UI theme (`dark` or `light`) |
-| `UNITYPACKAGE_BROWSER_ENFORCE_THEME` | `true` | When `true`, the user cannot switch themes |
-| `UNITYPACKAGE_BROWSER_IDENTITY_CSV_URL` | *(built-in Google Sheets URL)* | URL of the package catalog CSV used for identity lookup |
+| `UPI_THEME` | `dark` | Default UI theme (`dark` or `light`) |
+| `UPI_ENFORCE_THEME` | `true` | When `true`, the user cannot switch themes |
+| `UPI_IDENTITY_CSV_URL` | *(built-in Google Sheets URL)* | URL of the package catalog CSV used for identity lookup |
 
 ### Identity catalog CSV format
 
-The CSV is fetched at runtime from `UNITYPACKAGE_BROWSER_IDENTITY_CSV_URL`. Expected columns:
+The CSV is fetched at runtime from `UPI_IDENTITY_CSV_URL`. Expected columns:
 
 | Column | Description |
 |---|---|

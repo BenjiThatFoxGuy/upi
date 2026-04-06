@@ -17,7 +17,7 @@ def _parse_bool_env(name: str, default: bool) -> bool:
 
 
 def _read_theme_mode() -> str:
-    theme_mode = os.getenv("UNITYPACKAGE_BROWSER_THEME", "dark").strip().lower()
+    theme_mode = os.getenv("UPI_THEME", "dark").strip().lower()
     if theme_mode not in {"dark", "light"}:
         return "dark"
     return theme_mode
@@ -45,13 +45,13 @@ class AppSettings:
 
 
 def load_settings() -> AppSettings:
-    identity_catalog_url = os.getenv("UNITYPACKAGE_BROWSER_IDENTITY_CSV_URL", DEFAULT_IDENTITY_CSV_URL).strip()
+    identity_catalog_url = os.getenv("UPI_IDENTITY_CSV_URL", DEFAULT_IDENTITY_CSV_URL).strip()
     return AppSettings(
         frontend_dist=os.getenv("FRONTEND_DIST"),
         theme=_read_theme_mode(),
-        theme_enforced=_parse_bool_env("UNITYPACKAGE_BROWSER_ENFORCE_THEME", True),
+        theme_enforced=_parse_bool_env("UPI_ENFORCE_THEME", True),
         identity_catalog_url=identity_catalog_url,
         identity_lookup_enabled=bool(identity_catalog_url),
-        identity_lookup_timeout_seconds=float(os.getenv("UNITYPACKAGE_BROWSER_IDENTITY_TIMEOUT_SECONDS", "5")),
+        identity_lookup_timeout_seconds=float(os.getenv("UPI_IDENTITY_TIMEOUT_SECONDS", "5")),
         allowed_origin=os.getenv("FRONTEND_ORIGIN", "*"),
     )

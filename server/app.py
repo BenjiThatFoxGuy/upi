@@ -1,4 +1,4 @@
-from unitypackage_browser import create_app
+from unitypackage_inspector import create_app
 
 
 app = create_app()
