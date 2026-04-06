@@ -1,15 +1,19 @@
 /// <reference lib="webworker" />
 
-import { gunzipSync, strFromU8 } from 'fflate'
+import { gunzipSync, strFromU8, zipSync } from 'fflate'
+import { sha256 } from 'js-sha256'
+import SparkMD5 from 'spark-md5'
 
-import type { IndexedPackage, PackageAsset, WorkerRequest, WorkerResponse } from '../types/unitypackage'
+import type { IndexedPackage, PackageAsset, PackageFingerprint, PackageIdentity, WorkerRequest, WorkerResponse } from '../types/unitypackage'
 
-type WorkerAssetRecord = PackageAsset & { filename: string; bytes: Uint8Array }
+type WorkerAssetRecord = PackageAsset & { filename: string; bytes: Uint8Array; metaBytes?: Uint8Array }
 
 const workerScope = self as DedicatedWorkerGlobalScope
 const packageCache = new Map<string, WorkerAssetRecord>()
+let currentPackageName = 'package.unitypackage'
 
 const textDecoder = new TextDecoder('utf-8')
+const textEncoder = new TextEncoder()
 
 function postMessageToClient(message: WorkerResponse, transfer?: Transferable[]) {
   workerScope.postMessage(message, transfer ? { transfer } : undefined)
@@ -27,6 +31,48 @@ function isSafeUnityPath(pathname: string) {
 
   const parts = pathname.replace(/\\/g, '/').split('/').filter(Boolean)
   return parts.length > 0 && parts.every((part) => part !== '.' && part !== '..')
+}
+
+function sanitizeZipSegment(segment: string) {
+  return segment.replace(/[<>:"|?*]/g, '_').trim() || 'unnamed'
+}
+
+function buildZipEntryPath(asset: WorkerAssetRecord, includeMeta = false) {
+  const normalizedPath = asset.pathname.replace(/\\/g, '/').split('/').filter(Boolean).map(sanitizeZipSegment).join('/')
+  if (asset.safePath && normalizedPath) {
+    return includeMeta ? `${normalizedPath}.meta` : normalizedPath
+  }
+
+  const fallbackName = sanitizeZipSegment(asset.filename)
+  const flaggedPath = `_flagged/${sanitizeZipSegment(asset.guid)}/${fallbackName}`
+  return includeMeta ? `${flaggedPath}.meta` : flaggedPath
+}
+
+function buildZipFilename(packageName: string) {
+  return packageName.toLowerCase().endsWith('.unitypackage')
+    ? `${packageName.slice(0, -'.unitypackage'.length)}.zip`
+    : `${packageName}.zip`
+}
+
+async function sha256Hex(bytes: Uint8Array) {
+  return sha256(bytes)
+}
+
+function md5Hex(bytes: Uint8Array) {
+  return SparkMD5.ArrayBuffer.hash(Uint8Array.from(bytes).buffer)
+}
+
+async function sha256TextHex(value: string) {
+  return sha256Hex(textEncoder.encode(value))
+}
+
+function createPendingIdentity(): PackageIdentity {
+  return {
+    lookupStatus: 'pending',
+    recognitionStatus: 'unknown',
+    matchType: 'none',
+    message: 'Package identity will be checked when the backend can reach the catalog.',
+  }
 }
 
 function parseTarArchive(bytes: Uint8Array) {
@@ -53,8 +99,9 @@ function parseTarArchive(bytes: Uint8Array) {
   return entries
 }
 
-function buildIndexedPackage(fileName: string, entries: Map<string, Uint8Array>): IndexedPackage {
+async function buildIndexedPackage(fileName: string, archiveMd5: string, archiveSha256: string, entries: Map<string, Uint8Array>): Promise<IndexedPackage> {
   packageCache.clear()
+  currentPackageName = fileName
   const grouped = new Map<string, Partial<Record<'pathname' | 'asset' | 'asset.meta', Uint8Array>>>()
 
   for (const [name, data] of entries.entries()) {
@@ -98,14 +145,30 @@ function buildIndexedPackage(fileName: string, entries: Map<string, Uint8Array>)
       ...asset,
       filename,
       bytes: assetBytes,
+      metaBytes: groupedAsset['asset.meta'],
     })
   }
 
   assets.sort((left, right) => left.pathname.localeCompare(right.pathname))
+  const guidSample = Array.from(new Set(assets.map((asset) => asset.guid))).sort()
+  const fingerprint: PackageFingerprint = {
+    md5: archiveMd5,
+    sha256: archiveSha256,
+    guidFingerprint: await sha256TextHex(guidSample.join('\n')),
+    guidCount: guidSample.length,
+    guidValues: guidSample,
+    guidSample: guidSample.slice(0, 32),
+    assetCount: assets.length,
+    safeAssetCount: assets.filter((asset) => asset.safePath).length,
+    unsafeAssetCount: assets.filter((asset) => !asset.safePath).length,
+  }
+
   return {
     packageName: fileName,
     assetCount: assets.length,
     assets,
+    fingerprint,
+    identity: createPendingIdentity(),
     source: 'local',
   }
 }
@@ -115,6 +178,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
 
   if (payload.type === 'reset') {
     packageCache.clear()
+    currentPackageName = 'package.unitypackage'
     return
   }
 
@@ -138,13 +202,64 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
     return
   }
 
+  if (payload.type === 'download-package-zip') {
+    if (packageCache.size === 0) {
+      postMessageToClient({ type: 'error', message: 'Package ZIP is no longer available in local worker memory.' })
+      return
+    }
+
+    postMessageToClient({ type: 'status', message: 'Building ZIP archive in local worker memory.', progress: 92 })
+    const zipEntries: Record<string, Uint8Array> = {}
+
+    for (const asset of packageCache.values()) {
+      zipEntries[buildZipEntryPath(asset)] = asset.bytes.slice()
+      if (asset.metaBytes) {
+        zipEntries[buildZipEntryPath(asset, true)] = asset.metaBytes.slice()
+      }
+    }
+
+    const bytes = zipSync(zipEntries, { level: 0 })
+    const buffer = Uint8Array.from(bytes).buffer
+    postMessageToClient(
+      {
+        type: 'zipped',
+        filename: buildZipFilename(currentPackageName),
+        bytes: buffer,
+      },
+      [buffer],
+    )
+    return
+  }
+
+  if (payload.type === 'preview-asset') {
+    const asset = packageCache.get(payload.assetId)
+    if (!asset) {
+      postMessageToClient({ type: 'error', message: 'Asset preview is no longer available in local worker memory.' })
+      return
+    }
+
+    const buffer = asset.bytes.slice().buffer
+    postMessageToClient(
+      {
+        type: 'previewed',
+        assetId: asset.assetId,
+        filename: asset.filename,
+        bytes: buffer,
+      },
+      [buffer],
+    )
+    return
+  }
+
   try {
     postMessageToClient({ type: 'status', message: 'Reading package bytes from disk.', progress: 10 })
     const compressedBytes = new Uint8Array(await payload.file.arrayBuffer())
+    const archiveMd5 = md5Hex(compressedBytes)
+    const archiveSha256 = await sha256Hex(compressedBytes)
     postMessageToClient({ type: 'status', message: 'Decompressing gzip payload locally.', progress: 45 })
     const archiveBytes = gunzipSync(compressedBytes)
     postMessageToClient({ type: 'status', message: 'Parsing tar entries and building the asset index.', progress: 80 })
-    const pkg = buildIndexedPackage(payload.file.name, parseTarArchive(archiveBytes))
+    const pkg = await buildIndexedPackage(payload.file.name, archiveMd5, archiveSha256, parseTarArchive(archiveBytes))
     postMessageToClient({ type: 'indexed', pkg })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to index the selected unitypackage.'

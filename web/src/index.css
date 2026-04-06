@@ -1,19 +1,108 @@
 :root {
-  --text: #2f2b29;
-  --text-h: #171412;
-  --muted: #63584e;
-  --bg: #f3ede4;
-  --border: #d9cbba;
-  --shadow:
-    rgba(61, 41, 24, 0.12) 0 22px 36px -26px,
-    rgba(38, 28, 19, 0.14) 0 10px 18px -18px;
+  --md-sys-color-primary: #adc6ff;
+  --md-sys-color-on-primary: #082f67;
+  --md-sys-color-primary-container: #264777;
+  --md-sys-color-on-primary-container: #d7e3ff;
+  --md-sys-color-secondary: #c2c7dc;
+  --md-sys-color-on-secondary: #2c3042;
+  --md-sys-color-secondary-container: #434659;
+  --md-sys-color-on-secondary-container: #dfe2f9;
+  --md-sys-color-tertiary: #e5bdd6;
+  --md-sys-color-on-tertiary: #44263c;
+  --md-sys-color-tertiary-container: #5c3d53;
+  --md-sys-color-on-tertiary-container: #ffd7ee;
+  --md-sys-color-error: #ffb4ab;
+  --md-sys-color-on-error: #690005;
+  --md-sys-color-error-container: #93000a;
+  --md-sys-color-on-error-container: #ffdad6;
+  --md-sys-color-surface-dim: #101114;
+  --md-sys-color-surface: #131417;
+  --md-sys-color-surface-bright: #39393d;
+  --md-sys-color-surface-container-lowest: #0d0e11;
+  --md-sys-color-surface-container-low: #191b1e;
+  --md-sys-color-surface-container: #1d1f23;
+  --md-sys-color-surface-container-high: #282a2f;
+  --md-sys-color-surface-container-highest: #33353a;
+  --md-sys-color-on-surface: #e4e2e6;
+  --md-sys-color-on-surface-variant: #c4c6d0;
+  --md-sys-color-outline: #8e9099;
+  --md-sys-color-outline-variant: #44474f;
+  --md-sys-color-inverse-surface: #e4e2e6;
+  --md-sys-color-inverse-on-surface: #303034;
+  --md-sys-color-inverse-primary: #3f5f90;
+  --md-sys-color-shadow: rgba(0, 0, 0, 0.32);
+  --md-sys-color-scrim: rgba(0, 0, 0, 0.4);
 
-  --sans: 'Segoe UI Variable', 'Trebuchet MS', 'Gill Sans', sans-serif;
-  --heading: Georgia, 'Times New Roman', serif;
-  --mono: ui-monospace, Consolas, monospace;
+  --md-sys-shape-corner-extra-small: 4px;
+  --md-sys-shape-corner-small: 8px;
+  --md-sys-shape-corner-medium: 12px;
+  --md-sys-shape-corner-large: 16px;
+  --md-sys-shape-corner-extra-large: 28px;
+  --md-sys-shape-corner-full: 999px;
 
-  font: 18px/145% var(--sans);
-  letter-spacing: 0.18px;
+  --md-sys-elevation-level1: 0 1px 2px 0 rgba(0, 0, 0, 0.3), 0 1px 3px 1px rgba(0, 0, 0, 0.15);
+  --md-sys-elevation-level2: 0 1px 2px 0 rgba(0, 0, 0, 0.3), 0 2px 6px 2px rgba(0, 0, 0, 0.15);
+  --md-sys-elevation-level3: 0 4px 8px 3px rgba(0, 0, 0, 0.18), 0 1px 3px 0 rgba(0, 0, 0, 0.3);
+
+  --text: var(--md-sys-color-on-surface);
+  --text-h: var(--md-sys-color-on-surface);
+  --muted: var(--md-sys-color-on-surface-variant);
+  --bg: var(--md-sys-color-surface);
+  --border: var(--md-sys-color-outline-variant);
+  --panel-bg: color-mix(in srgb, var(--md-sys-color-surface-container) 92%, transparent);
+  --label: var(--md-sys-color-on-surface-variant);
+  --status-online-a: color-mix(in srgb, var(--md-sys-color-secondary-container) 84%, var(--md-sys-color-surface-container-high));
+  --status-online-b: var(--md-sys-color-surface-container-high);
+  --status-offline-a: color-mix(in srgb, var(--md-sys-color-error-container) 76%, var(--md-sys-color-surface-container-high));
+  --status-offline-b: var(--md-sys-color-surface-container-high);
+  --button-bg: var(--md-sys-color-primary);
+  --button-text: var(--md-sys-color-on-primary);
+  --button-secondary-bg: var(--md-sys-color-secondary-container);
+  --button-secondary-text: var(--md-sys-color-on-secondary-container);
+  --button-strong-bg: var(--md-sys-color-primary-container);
+  --button-strong-text: var(--md-sys-color-on-primary-container);
+  --warning-bg: color-mix(in srgb, var(--md-sys-color-tertiary-container) 54%, transparent);
+  --warning-text: var(--md-sys-color-on-tertiary-container);
+  --error-bg: color-mix(in srgb, var(--md-sys-color-error-container) 48%, transparent);
+  --error-text: var(--md-sys-color-on-error-container);
+  --meter-bg: var(--md-sys-color-surface-container-highest);
+  --meter-fill-a: var(--md-sys-color-primary);
+  --meter-fill-b: color-mix(in srgb, var(--md-sys-color-primary) 70%, white);
+  --input-border: var(--md-sys-color-outline);
+  --input-bg: var(--md-sys-color-surface-container-low);
+  --asset-bg: var(--md-sys-color-surface-container-low);
+  --asset-border: var(--md-sys-color-outline-variant);
+  --asset-chip-bg: var(--md-sys-color-surface-container-high);
+  --preview-bg: var(--md-sys-color-surface-container-lowest);
+  --shadow: var(--md-sys-elevation-level2);
+
+  --sans: 'Roboto Flex', 'Roboto', 'Segoe UI Variable', 'Segoe UI', sans-serif;
+  --heading: 'Roboto Flex', 'Roboto', 'Segoe UI Variable', sans-serif;
+  --mono: 'Roboto Mono', ui-monospace, Consolas, monospace;
+
+  --md-sys-typescale-display-small-size: 2.25rem;
+  --md-sys-typescale-display-small-line-height: 2.75rem;
+  --md-sys-typescale-headline-large-size: 2.9rem;
+  --md-sys-typescale-headline-large-line-height: 3.25rem;
+  --md-sys-typescale-headline-large-tracking: 0;
+  --md-sys-typescale-title-large-size: 1.375rem;
+  --md-sys-typescale-title-large-line-height: 1.75rem;
+  --md-sys-typescale-title-medium-size: 1rem;
+  --md-sys-typescale-title-medium-line-height: 1.5rem;
+  --md-sys-typescale-title-medium-tracking: 0.009rem;
+  --md-sys-typescale-body-large-size: 1rem;
+  --md-sys-typescale-body-large-line-height: 1.5rem;
+  --md-sys-typescale-body-medium-size: 0.875rem;
+  --md-sys-typescale-body-medium-line-height: 1.25rem;
+  --md-sys-typescale-label-large-size: 0.875rem;
+  --md-sys-typescale-label-large-line-height: 1.25rem;
+  --md-sys-typescale-label-large-tracking: 0.006rem;
+  --md-sys-typescale-label-small-size: 0.6875rem;
+  --md-sys-typescale-label-small-line-height: 1rem;
+  --md-sys-typescale-label-small-tracking: 0.03rem;
+
+  font: 400 var(--md-sys-typescale-body-large-size) / var(--md-sys-typescale-body-large-line-height) var(--sans);
+  letter-spacing: 0.01rem;
   color: var(--text);
   background: var(--bg);
   font-synthesis: none;
@@ -22,8 +111,71 @@
   -moz-osx-font-smoothing: grayscale;
 
   @media (max-width: 1024px) {
-    font-size: 16px;
+    --md-sys-typescale-headline-large-size: 2.35rem;
+    --md-sys-typescale-headline-large-line-height: 2.75rem;
   }
+}
+
+:root[data-theme='light'] {
+  --md-sys-color-primary: #3f5f90;
+  --md-sys-color-on-primary: #ffffff;
+  --md-sys-color-primary-container: #d7e3ff;
+  --md-sys-color-on-primary-container: #082f67;
+  --md-sys-color-secondary: #585d72;
+  --md-sys-color-on-secondary: #ffffff;
+  --md-sys-color-secondary-container: #dfe2f9;
+  --md-sys-color-on-secondary-container: #151b2c;
+  --md-sys-color-tertiary: #75546b;
+  --md-sys-color-on-tertiary: #ffffff;
+  --md-sys-color-tertiary-container: #ffd7ee;
+  --md-sys-color-on-tertiary-container: #5b3d52;
+  --md-sys-color-error: #ba1a1a;
+  --md-sys-color-on-error: #ffffff;
+  --md-sys-color-error-container: #ffdad6;
+  --md-sys-color-on-error-container: #410002;
+  --md-sys-color-surface-dim: #d9d9de;
+  --md-sys-color-surface: #faf8fd;
+  --md-sys-color-surface-bright: #faf8fd;
+  --md-sys-color-surface-container-lowest: #ffffff;
+  --md-sys-color-surface-container-low: #f4f2f7;
+  --md-sys-color-surface-container: #eeecf1;
+  --md-sys-color-surface-container-high: #e8e6eb;
+  --md-sys-color-surface-container-highest: #e2e1e6;
+  --md-sys-color-on-surface: #1a1c20;
+  --md-sys-color-on-surface-variant: #44474f;
+  --md-sys-color-outline: #747780;
+  --md-sys-color-outline-variant: #c4c6d0;
+  --md-sys-color-inverse-surface: #2f3033;
+  --md-sys-color-inverse-on-surface: #f1f0f4;
+  --md-sys-color-inverse-primary: #adc6ff;
+  --md-sys-color-shadow: rgba(0, 0, 0, 0.16);
+  --md-sys-color-scrim: rgba(0, 0, 0, 0.24);
+
+  --panel-bg: color-mix(in srgb, var(--md-sys-color-surface-container) 96%, transparent);
+  --status-online-a: color-mix(in srgb, var(--md-sys-color-secondary-container) 88%, var(--md-sys-color-surface-container-high));
+  --status-online-b: var(--md-sys-color-surface-container-high);
+  --status-offline-a: color-mix(in srgb, var(--md-sys-color-error-container) 78%, var(--md-sys-color-surface-container-high));
+  --status-offline-b: var(--md-sys-color-surface-container-high);
+  --button-bg: var(--md-sys-color-primary);
+  --button-text: var(--md-sys-color-on-primary);
+  --button-secondary-bg: var(--md-sys-color-secondary-container);
+  --button-secondary-text: var(--md-sys-color-on-secondary-container);
+  --button-strong-bg: var(--md-sys-color-primary-container);
+  --button-strong-text: var(--md-sys-color-on-primary-container);
+  --warning-bg: color-mix(in srgb, var(--md-sys-color-tertiary-container) 90%, transparent);
+  --warning-text: var(--md-sys-color-on-tertiary-container);
+  --error-bg: color-mix(in srgb, var(--md-sys-color-error-container) 92%, transparent);
+  --error-text: var(--md-sys-color-on-error-container);
+  --meter-bg: var(--md-sys-color-surface-container-highest);
+  --meter-fill-a: var(--md-sys-color-primary);
+  --meter-fill-b: color-mix(in srgb, var(--md-sys-color-primary) 70%, white);
+  --input-border: var(--md-sys-color-outline);
+  --input-bg: var(--md-sys-color-surface-container-lowest);
+  --asset-bg: var(--md-sys-color-surface-container-low);
+  --asset-border: var(--md-sys-color-outline-variant);
+  --asset-chip-bg: var(--md-sys-color-surface-container-high);
+  --preview-bg: var(--md-sys-color-surface-container);
+  --shadow: var(--md-sys-elevation-level1);
 }
 
 #root {
@@ -37,32 +189,33 @@
 body {
   margin: 0;
   background:
-    radial-gradient(circle at top, rgba(201, 106, 53, 0.12), transparent 26%),
-    linear-gradient(180deg, #f3ede4, #efe6d9);
+    radial-gradient(circle at top, color-mix(in srgb, var(--md-sys-color-primary) 18%, transparent), transparent 30%),
+    linear-gradient(180deg, var(--md-sys-color-surface-dim), var(--md-sys-color-surface));
+}
+
+:root[data-theme='light'] body {
+  background:
+    radial-gradient(circle at top, color-mix(in srgb, var(--md-sys-color-primary) 10%, transparent), transparent 30%),
+    linear-gradient(180deg, var(--md-sys-color-surface-bright), var(--md-sys-color-surface));
 }
 
 h1,
 h2 {
   font-family: var(--heading);
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text-h);
 }
 
 h1 {
-  font-size: 56px;
-  letter-spacing: -1.68px;
-  @media (max-width: 1024px) {
-    font-size: 36px;
-  }
+  font-size: var(--md-sys-typescale-headline-large-size);
+  line-height: var(--md-sys-typescale-headline-large-line-height);
+  letter-spacing: var(--md-sys-typescale-headline-large-tracking);
 }
 
 h2 {
-  font-size: 24px;
-  line-height: 118%;
-  letter-spacing: -0.24px;
-  @media (max-width: 1024px) {
-    font-size: 20px;
-  }
+  font-size: var(--md-sys-typescale-title-large-size);
+  line-height: var(--md-sys-typescale-title-large-line-height);
+  letter-spacing: 0;
 }
 
 p {
@@ -76,4 +229,11 @@ p {
 button,
 input {
   font: inherit;
+}
+
+button:focus-visible,
+input:focus-visible,
+label:focus-within {
+  outline: 3px solid color-mix(in srgb, var(--md-sys-color-primary) 56%, transparent);
+  outline-offset: 2px;
 }
