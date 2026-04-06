@@ -1,7 +1,21 @@
-# Normalize text files to LF in the repository and working tree by default.
-* text=auto eol=lf
+# Normalize text files in Git, then preserve the correct working-tree endings by file type.
+* text=auto
 
-# Keep native Windows script line endings when those files are added later.
+# Windows scripts should stay CRLF in the working tree.
 *.bat text eol=crlf
 *.cmd text eol=crlf
 *.ps1 text eol=crlf
+
+# POSIX scripts and source/config files should stay LF.
+*.sh text eol=lf
+*.py text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf
+*.jsx text eol=lf
+*.css text eol=lf
+*.html text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
