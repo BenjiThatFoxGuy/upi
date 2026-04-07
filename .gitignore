@@ -20,5 +20,8 @@ web/dist/
 server/.venv/
 server/uploads/
 
+electron/node_modules/
+electron/dist/
+
 .DS_Store
 Thumbs.db
