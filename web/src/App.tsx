@@ -17,8 +17,15 @@ function resolveBackendBaseUrl() {
     return 'http://localhost:8000'
   }
 
-  const { protocol, hostname } = window.location
-  return `${protocol}//${hostname}:8000`
+  // In production builds the frontend is always served by the Flask backend
+  // on the same origin (Docker, Electron, etc.). In Vite dev mode the
+  // frontend runs on :5173 while the backend runs separately on :8000.
+  if (import.meta.env.DEV) {
+    const { protocol, hostname } = window.location
+    return `${protocol}//${hostname}:8000`
+  }
+
+  return window.location.origin
 }
 
 const backendBaseUrl = resolveBackendBaseUrl()

@@ -1,0 +1,36 @@
+appId: io.github.benjithatfoxguy.upi
+productName: UPI
+
+directories:
+  output: ../dist/electron
+
+# Compiled main/preload JS
+files:
+  - dist/**
+
+# Copy the Vite-built frontend and the PyInstaller bundle into app resources.
+# PyInstaller --onedir output: pyinstaller-dist/app/{app, _internal/...}
+extraResources:
+  - from: ../web/dist
+    to: frontend-dist
+    filter: ["**/*"]
+  - from: pyinstaller-dist/app
+    to: backend
+    filter: ["**/*"]
+
+mac:
+  target:
+    - target: dmg
+      arch: [x64, arm64]
+  category: public.app-category.developer-tools
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+
+linux:
+  target:
+    - target: AppImage
+      arch: [x64]
+  category: Utility
