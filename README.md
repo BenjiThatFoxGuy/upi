@@ -92,7 +92,7 @@ The frontend automatically derives the API base URL from the browser hostname on
 |---|---|---|
 | `UPI_THEME` | `dark` | Default UI theme (`dark` or `light`) |
 | `UPI_ENFORCE_THEME` | `true` | When `true`, the user cannot switch themes |
-| `UPI_IDENTITY_CSV_URL` | *(built-in Google Sheets URL)* | URL of the package catalog CSV used for identity lookup |
+| `UPI_IDENTITY_CSV_URL` | `https://benjithatfoxguy.github.io/pawprint/index.csv` | URL of the package catalog CSV used for identity lookup |
 | `UPI_IDENTITY_TIMEOUT_SECONDS` | `5` | Timeout, in seconds, for fetching the identity catalog CSV |
 | `UPI_IDENTITY_CACHE_SECONDS` | `300` | How long, in seconds, the backend caches the fetched identity catalog before refreshing it (defaults to `0` in dev mode) |
 | `UPI_DEV` | *(unset)* | Set to `1` or `true` to enable backend development mode (disables catalog caching) |

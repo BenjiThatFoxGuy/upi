@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-DEFAULT_IDENTITY_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ1vTxn8EW89yA6cK2n3jCFxc8YUb39Nw9W1fKctHr_21oHzySw3_FGmCsagdr3mCUGC35xY_czo40G/pub?output=csv"
+DEFAULT_IDENTITY_CSV_URL = "https://benjithatfoxguy.github.io/pawprint/index.csv"
 
 
 def _parse_bool_env(name: str, default: bool) -> bool:

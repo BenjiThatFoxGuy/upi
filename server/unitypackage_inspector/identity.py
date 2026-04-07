@@ -11,10 +11,8 @@ from urllib.error import URLError
 from urllib.parse import urlparse
 from urllib.request import urlopen
 
+from .config import DEFAULT_IDENTITY_CSV_URL
 from .models import PackageFingerprint, PackageIdentity, PackageSourceLink, ParsedAsset
-
-
-DEFAULT_IDENTITY_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ1vTxn8EW89yA6cK2n3jCFxc8YUb39Nw9W1fKctHr_21oHzySw3_FGmCsagdr3mCUGC35xY_czo40G/pub?output=csv"
 
 _catalog_cache: tuple[float, list[dict[str, str]]] | None = None
 
