@@ -9,6 +9,8 @@ FROM python:3.10-slim AS runtime
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV FRONTEND_DIST=/app/frontend-dist
+ENV UPI_HOST=0.0.0.0
+ENV UPI_PORT=8000
 WORKDIR /app
 COPY server/requirements.txt ./server/requirements.txt
 RUN pip install --no-cache-dir -r ./server/requirements.txt

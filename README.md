@@ -35,6 +35,14 @@ docker run -p 8000:8000 \
   ghcr.io/benjithatfoxguy/upi:latest
 ```
 
+To run on a different container port, set `UPI_PORT` (or `PORT`) and map the same port:
+
+```bash
+docker run -p 9000:9000 \
+  -e UPI_PORT=9000 \
+  ghcr.io/benjithatfoxguy/upi:latest
+```
+
 Available tags:
 
 | Tag | Updated |
@@ -129,6 +137,7 @@ The frontend automatically derives the API base URL from the browser hostname on
 | `UPI_IDENTITY_CSV_URL` | `https://benjithatfoxguy.github.io/pawprint/index.csv` | URL of the package catalog CSV used for identity lookup |
 | `UPI_IDENTITY_TIMEOUT_SECONDS` | `5` | Timeout, in seconds, for fetching the identity catalog CSV |
 | `UPI_IDENTITY_CACHE_SECONDS` | `300` | How long, in seconds, the backend caches the fetched identity catalog before refreshing it (defaults to `0` in dev mode) |
+| `UPI_PORT` / `PORT` | `8000` | Backend listen port (useful for custom container port mappings) |
 | `UPI_DEV` | *(unset)* | Set to `1` or `true` to enable backend development mode (disables catalog caching) |
 | `FRONTEND_ORIGIN` | `*` | Allowed frontend origin used by the backend for CORS (set to e.g. `http://localhost:5173` in split frontend/backend setups) |
 
