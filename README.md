@@ -17,17 +17,51 @@ A web-based inspector for `.unitypackage` files. Upload a package (or provide a 
 
 ---
 
-## Running with Docker
+## Deployment
 
-The easiest way to get a production build running:
+The easiest way to run UPI is with the prebuilt image from GHCR:
 
 ```bash
-docker compose up --build
+docker run -p 8000:8000 ghcr.io/benjithatfoxguy/upi:latest
 ```
 
 The app will be available at `http://localhost:8000`.
 
-To build and run the image directly:
+Pass environment variables via `-e` to configure behaviour (see [Configuration](#configuration) below). For example:
+
+```bash
+docker run -p 8000:8000 \
+  -e UPI_ENFORCE_THEME=false \
+  ghcr.io/benjithatfoxguy/upi:latest
+```
+
+Available tags:
+
+| Tag | Updated |
+|---|---|
+| `latest` | On every versioned release |
+| `nightly` | On every push to `main` |
+| `1.2.3` / `1.2` / `1` | Pinned release versions |
+
+Or use Docker Compose — create a `compose.yaml`:
+
+```yaml
+services:
+  upi:
+    image: ghcr.io/benjithatfoxguy/upi:latest
+    ports:
+      - "8000:8000"
+```
+
+Then run:
+
+```bash
+docker compose up
+```
+
+### Building from source
+
+If you need a custom build:
 
 ```bash
 docker build -t upi .
@@ -36,7 +70,7 @@ docker run -p 8000:8000 upi
 
 ---
 
-## Local development
+## Development
 
 Quick-start scripts from the repo root start both servers together:
 
