@@ -48,6 +48,8 @@ mac:
   # instead. Replace with a real identity (and notarization) once there is one.
   identity: null
   extendInfo:
+    CFBundleDisplayName: "Unity Package Inspector"
+    NSHumanReadableCopyright: "Copyright © 2026 BenjiThatFoxGuy. MIT License."
     # SUFeedURL is set dynamically in main.ts based on process.arch, so both
     # arm64 and x64 builds point at their own appcast. The plist value is a
     # fallback Sparkle reads if init() isn't called.
