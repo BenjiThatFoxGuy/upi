@@ -155,6 +155,13 @@ jobs:
         working-directory: electron
         run: npm ci
 
+      # Build the native Sparkle bridge addon for the target Electron ABI.
+      # Only needed on macOS; the command is a no-op elsewhere.
+      - name: Rebuild Sparkle native addon
+        if: runner.os == 'macOS'
+        working-directory: electron
+        run: npx electron-sparkle-updater rebuild
+
       # electron-builder downloads the Electron zip plus NSIS/AppImage/dmg
       # tooling on every run unless these directories are kept.
       - name: Point Electron download caches at a cacheable path
@@ -173,6 +180,20 @@ jobs:
           restore-keys: |
             electron-downloads-${{ runner.os }}-${{ runner.arch }}-
 
+      # Inject the real Sparkle EdDSA public key into electron-builder.yml
+      # at build time, replacing the placeholder. Only on versioned mac releases.
+      - name: Inject Sparkle public key
+        if: runner.os == 'macOS' && startsWith(github.ref, 'refs/tags/v')
+        working-directory: electron
+        env:
+          SPARKLE_ED_PUBLIC_KEY: ${{ secrets.SPARKLE_ED_PUBLIC_KEY }}
+        run: |
+          if [[ -z "$SPARKLE_ED_PUBLIC_KEY" ]]; then
+            echo "::warning::SPARKLE_ED_PUBLIC_KEY secret not set, Sparkle updates will be disabled"
+          else
+            sed -i '' "s/SPARKLE_ED_PUBLIC_KEY_PLACEHOLDER/$SPARKLE_ED_PUBLIC_KEY/" electron-builder.yml
+          fi
+
       - name: Build Electron distributable
         shell: bash
         env:
@@ -190,8 +211,10 @@ jobs:
           name: upi-desktop-${{ matrix.name }}
           path: |
             dist/electron/*.dmg
+            dist/electron/*.zip
             dist/electron/*.exe
             dist/electron/*.AppImage
+            dist/electron/latest*.yml
           retention-days: 7
           if-no-files-found: error
 
@@ -245,6 +268,59 @@ jobs:
           files: artifacts/*
           fail_on_unmatched_files: true
 
+  # Generate Sparkle appcast for macOS auto-updates on versioned releases.
+  # Runs on macOS because generate_appcast is a native binary.
+  # Each architecture gets its own appcast so Sparkle serves the right binary.
+  appcast:
+    name: Generate appcast (${{ matrix.arch }})
+    needs: release
+    if: startsWith(github.ref, 'refs/tags/v')
+    strategy:
+      matrix:
+        include:
+          - arch: arm64
+            artifact: upi-desktop-macos-arm64
+          - arch: x64
+            artifact: upi-desktop-macos-x64
+    runs-on: macos-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download mac build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: archive
+
+      - name: Prepare archive directory
+        run: |
+          ls -la archive/
+          # The action expects only the zip in the archive dir
+          rm -f archive/*.dmg archive/latest*.yml
+
+      - name: Generate appcast
+        uses: Innei/electron-sparkle-updater/action@v1
+        with:
+          tag: ${{ github.ref_name }}
+          archive-dir: archive
+          ed-private-key: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+          tag-prefix: v
+          publish: false
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload appcast to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Rename appcast to include the architecture
+          mv archive/appcast.xml archive/appcast-${{ matrix.arch }}.xml
+          # Upload appcast and any delta files to the existing release
+          gh release upload "${{ github.ref_name }}" \
+            archive/appcast-${{ matrix.arch }}.xml \
+            archive/*.delta \
+            --clobber
+
   pr-comment:
     name: Comment build links
     needs: build
@@ -293,7 +369,7 @@ jobs:
               echo "|---|---|---|---|"
               echo "$ROWS"
               echo
-              echo "Downloads are zipped and are removed after the expiry date. These builds are unsigned: on macOS run \`xattr -cr /Applications/UPI.app\` after installing; on Windows click *More info* → *Run anyway*."
+              echo "Downloads are zipped and are removed after the expiry date. These builds are unsigned: on macOS run \`xattr -cr /Applications/UPI.app\` after installing, or go to **System Settings → Privacy & Security** and click **Open Anyway**; on Windows click *More info* → *Run anyway*."
             else
               echo "No artifacts were produced."
             fi

@@ -7,15 +7,21 @@ directories:
 # One unique name per platform/arch so every file can live in the same release.
 artifactName: ${productName}-${version}-${os}-${arch}.${ext}
 
-afterPack: scripts/adhoc-sign.js
+afterPack: scripts/afterPack.cjs
 
-# Releases are uploaded by the build-electron workflow, not electron-builder,
-# and there is no auto-updater, so skip update metadata generation.
-publish: null
+# Update metadata for electron-updater (Windows/Linux).
+# macOS uses Sparkle via electron-sparkle-updater instead.
+publish:
+  provider: github
+  owner: BenjiThatFoxGuy
+  repo: upi
 
 # Compiled main/preload JS
 files:
   - dist/**
+  # Exclude the vendored Sparkle.framework from the asar — it's placed into
+  # the app bundle by extraFiles instead.
+  - "!node_modules/electron-sparkle-updater/native/vendor/**"
 
 # Copy the Vite-built frontend and the PyInstaller bundle into app resources.
 # PyInstaller --onedir output: pyinstaller-dist/app/{app, _internal/...}
@@ -27,17 +33,46 @@ extraResources:
     to: backend
     filter: ["**/*"]
 
+# Unpack the native Sparkle bridge addon so Node can dlopen it.
+asarUnpack:
+  - "node_modules/electron-sparkle-updater/native/build/Release/*.node"
+
 # Architectures are picked on the command line (--x64 / --arm64) because the
 # PyInstaller backend can only be built for the host's own arch.
 mac:
-  target: dmg
+  target:
+    - dmg
+    - zip
   category: public.app-category.developer-tools
-  # No Developer ID yet: skip real signing, scripts/adhoc-sign.js ad-hoc signs
+  # No Developer ID yet: skip real signing, afterPack.cjs ad-hoc signs
   # instead. Replace with a real identity (and notarization) once there is one.
   identity: null
+  extendInfo:
+    # SUFeedURL is set dynamically in main.ts based on process.arch, so both
+    # arm64 and x64 builds point at their own appcast. The plist value is a
+    # fallback Sparkle reads if init() isn't called.
+    SUFeedURL: "https://github.com/BenjiThatFoxGuy/upi/releases/latest/download/appcast-arm64.xml"
+    SUPublicEDKey: "SPARKLE_ED_PUBLIC_KEY_PLACEHOLDER"
+  # Sparkle handles macOS updates; disable electron-builder's blockmap metadata
+  # so it doesn't generate Squirrel/electron-updater update info for mac.
+
+# Sparkle handles macOS updates; disable electron-builder's blockmap metadata.
+dmg:
+  writeUpdateInfo: false
+
+# Place Sparkle.framework into the app bundle's Frameworks/ directory.
+extraFiles:
+  - from: node_modules/electron-sparkle-updater/native/vendor/Sparkle.framework
+    to: Frameworks/Sparkle.framework
+    filter: ["**/*"]
 
 win:
   target: nsis
+  # electron-updater handles Windows updates via GitHub releases.
+  publish:
+    - provider: github
+      owner: BenjiThatFoxGuy
+      repo: upi
 
 nsis:
   oneClick: false
@@ -46,3 +81,8 @@ nsis:
 linux:
   target: AppImage
   category: Utility
+  # electron-updater handles Linux updates via GitHub releases.
+  publish:
+    - provider: github
+      owner: BenjiThatFoxGuy
+      repo: upi

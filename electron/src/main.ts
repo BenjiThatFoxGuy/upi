@@ -71,7 +71,7 @@ async function startBackend(): Promise<number> {
     windowsHide: true,
     env: {
       ...process.env,
-      // Bind only to loopback – no reason to expose the backend on the LAN.
+      // Bind only to loopback - no reason to expose the backend on the LAN.
       UPI_HOST: '127.0.0.1',
       UPI_PORT: String(port),
       // Tell Flask where the pre-built Vite assets live.
@@ -95,6 +95,93 @@ function stopBackend() {
   if (backend && !backend.killed) {
     backend.kill()
     backend = null
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Auto-updater
+// ---------------------------------------------------------------------------
+
+async function initAutoUpdater() {
+  if (isDev || !app.isPackaged) return
+
+  if (process.platform === 'darwin') {
+    // macOS: use Sparkle via electron-sparkle-updater.
+    try {
+      const { loadSparkleBridgeForApp } = await import('electron-sparkle-updater')
+      const bridge = await loadSparkleBridgeForApp((msg) =>
+        console.log('[sparkle]', msg),
+      )
+
+      if (bridge) {
+        const archSuffix = process.arch === 'x64' ? 'x64' : 'arm64'
+        const appcastUrl =
+          process.env.UPI_APPCAST_URL ??
+          `https://github.com/BenjiThatFoxGuy/upi/releases/latest/download/appcast-${archSuffix}.xml`
+
+        // The public EdDSA key is baked into Info.plist (SUPublicEDKey) at
+        // build time. Read it from there so there's a single source of truth.
+        const { SUPublicEDKey } = (
+          app as unknown as { getInfoPlistData?: () => Record<string, string> }
+        ).getInfoPlistData?.() ?? {}
+
+        const publicEdKey =
+          process.env.UPI_SPARKLE_PUBLIC_KEY ?? SUPublicEDKey ?? ''
+
+        if (
+          !publicEdKey ||
+          publicEdKey === 'SPARKLE_ED_PUBLIC_KEY_PLACEHOLDER'
+        ) {
+          console.log(
+            '[sparkle] no EdDSA public key configured, skipping auto-update',
+          )
+          return
+        }
+
+        const ok = bridge.init({ appcastUrl, publicEdKey })
+        if (!ok) {
+          console.error('[sparkle] init failed')
+          return
+        }
+
+        bridge.setEventHandler((event) => {
+          console.log('[sparkle]', event.type, event)
+        })
+
+        // Enable periodic background checks.
+        bridge.setAutomaticChecks(true)
+
+        // Also check right now on launch.
+        bridge.checkForUpdates()
+
+        // Clean up the native callback on quit to avoid calling into a
+        // deallocated handler.
+        app.on('will-quit', () => bridge.setEventHandler(null))
+
+        console.log('[sparkle] auto-updater initialized')
+      } else {
+        console.log('[sparkle] bridge not available, skipping auto-update')
+      }
+    } catch (err) {
+      console.error('[sparkle] failed to initialize:', err)
+    }
+  } else {
+    // Windows / Linux: use electron-updater.
+    try {
+      const { autoUpdater } = await import('electron-updater')
+      autoUpdater.logger = {
+        info: (msg: string) => console.log('[updater]', msg),
+        warn: (msg: string) => console.warn('[updater]', msg),
+        error: (msg: string) => console.error('[updater]', msg),
+        debug: (msg: string) => console.log('[updater:debug]', msg),
+      }
+      autoUpdater.autoDownload = true
+      autoUpdater.autoInstallOnAppQuit = true
+      await autoUpdater.checkForUpdatesAndNotify()
+      console.log('[updater] auto-updater initialized')
+    } catch (err) {
+      console.error('[updater] failed to initialize:', err)
+    }
   }
 }
 
@@ -137,7 +224,11 @@ async function createWindow() {
 // App lifecycle
 // ---------------------------------------------------------------------------
 
-app.whenReady().then(createWindow).catch((err: unknown) => {
+app.whenReady().then(async () => {
+  await createWindow()
+  // Fire-and-forget: don't block the window on update checks.
+  initAutoUpdater()
+}).catch((err: unknown) => {
   console.error('Failed to launch:', err)
   app.quit()
 })
