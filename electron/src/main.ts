@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, shell } from 'electron'
+import { app, BrowserWindow, dialog, Menu, shell } from 'electron'
 import { spawn, type ChildProcess } from 'child_process'
 import * as fs from 'fs'
 import * as http from 'http'
@@ -15,8 +15,16 @@ let backend: ChildProcess | null = null
 
 const APP_DISPLAY_NAME = 'Unity Package Inspector'
 
-// Stored reference to the Sparkle bridge for menu actions.
-let sparkleBridge: { checkForUpdates(): void } | null = null
+// Stored reference for triggering update checks from the menu.
+// On macOS this is the Sparkle bridge; on Win/Linux it wraps electron-updater.
+let checkForUpdatesFromMenu: (() => void) | null = null
+
+// Sparkle bridge reference for macOS-specific operations.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let sparkleBridge: any = null
+
+// Whether the current update check was triggered by the user (menu item).
+let userInitiatedCheck = false
 
 // ---------------------------------------------------------------------------
 // Port helpers
@@ -162,12 +170,69 @@ async function initAutoUpdater() {
 
         bridge.setEventHandler((event) => {
           console.log('[sparkle]', event.type, event)
+
+          if (event.type === 'update-available') {
+            const version = (event.version as string) ?? 'unknown'
+            dialog
+              .showMessageBox({
+                type: 'info',
+                title: 'Update Available',
+                message: `A new version of ${APP_DISPLAY_NAME} is available.`,
+                detail: `Version ${version} is ready to download. The update will be downloaded in the background.`,
+                buttons: ['OK'],
+              })
+              .catch(() => {})
+          }
+
+          if (event.type === 'update-downloaded') {
+            dialog
+              .showMessageBox({
+                type: 'info',
+                title: 'Update Ready',
+                message: 'An update has been downloaded.',
+                detail: `The new version will be installed when you quit ${APP_DISPLAY_NAME}. Would you like to restart now?`,
+                buttons: ['Restart Now', 'Later'],
+                defaultId: 0,
+              })
+              .then(({ response }) => {
+                if (response === 0) {
+                  sparkleBridge?.installUpdateNow()
+                }
+              })
+              .catch(() => {})
+          }
+
+          if (event.type === 'update-not-available' && userInitiatedCheck) {
+            userInitiatedCheck = false
+            dialog
+              .showMessageBox({
+                type: 'info',
+                title: 'No Updates Available',
+                message: `You're up to date!`,
+                detail: `${APP_DISPLAY_NAME} ${app.getVersion()} is the latest version.`,
+                buttons: ['OK'],
+              })
+              .catch(() => {})
+          }
+
+          if (event.type === 'error' && userInitiatedCheck) {
+            userInitiatedCheck = false
+            dialog
+              .showMessageBox({
+                type: 'warning',
+                title: 'Update Check Failed',
+                message: 'Could not check for updates.',
+                detail: 'Please check your internet connection and try again later.',
+                buttons: ['OK'],
+              })
+              .catch(() => {})
+          }
         })
 
         // Enable periodic background checks.
         bridge.setAutomaticChecks(true)
 
-        // Also check right now on launch.
+        // Check on launch (silently - no dialog if up to date).
         bridge.checkForUpdates()
 
         // Clean up the native callback on quit to avoid calling into a
@@ -175,6 +240,10 @@ async function initAutoUpdater() {
         app.on('will-quit', () => bridge.setEventHandler(null))
 
         sparkleBridge = bridge
+        checkForUpdatesFromMenu = () => {
+          userInitiatedCheck = true
+          bridge.checkForUpdates()
+        }
         console.log('[sparkle] auto-updater initialized')
       } else {
         console.log('[sparkle] bridge not available, skipping auto-update')
@@ -194,7 +263,73 @@ async function initAutoUpdater() {
       }
       autoUpdater.autoDownload = true
       autoUpdater.autoInstallOnAppQuit = true
-      await autoUpdater.checkForUpdatesAndNotify()
+
+      autoUpdater.on('update-available', (info) => {
+        dialog
+          .showMessageBox({
+            type: 'info',
+            title: 'Update Available',
+            message: `A new version of ${APP_DISPLAY_NAME} is available.`,
+            detail: `Version ${info.version} is being downloaded in the background.`,
+            buttons: ['OK'],
+          })
+          .catch(() => {})
+      })
+
+      autoUpdater.on('update-downloaded', (info) => {
+        dialog
+          .showMessageBox({
+            type: 'info',
+            title: 'Update Ready',
+            message: 'An update has been downloaded.',
+            detail: `Version ${info.version} will be installed when you quit ${APP_DISPLAY_NAME}. Would you like to restart now?`,
+            buttons: ['Restart Now', 'Later'],
+            defaultId: 0,
+          })
+          .then(({ response }) => {
+            if (response === 0) {
+              autoUpdater.quitAndInstall()
+            }
+          })
+          .catch(() => {})
+      })
+
+      autoUpdater.on('update-not-available', () => {
+        if (userInitiatedCheck) {
+          userInitiatedCheck = false
+          dialog
+            .showMessageBox({
+              type: 'info',
+              title: 'No Updates Available',
+              message: `You're up to date!`,
+              detail: `${APP_DISPLAY_NAME} ${app.getVersion()} is the latest version.`,
+              buttons: ['OK'],
+            })
+            .catch(() => {})
+        }
+      })
+
+      autoUpdater.on('error', (err) => {
+        if (userInitiatedCheck) {
+          userInitiatedCheck = false
+          dialog
+            .showMessageBox({
+              type: 'warning',
+              title: 'Update Check Failed',
+              message: 'Could not check for updates.',
+              detail: err?.message ?? 'Please check your internet connection and try again later.',
+              buttons: ['OK'],
+            })
+            .catch(() => {})
+        }
+      })
+
+      checkForUpdatesFromMenu = () => {
+        userInitiatedCheck = true
+        autoUpdater.checkForUpdates()
+      }
+
+      await autoUpdater.checkForUpdates()
       console.log('[updater] auto-updater initialized')
     } catch (err) {
       console.error('[updater] failed to initialize:', err)
@@ -217,11 +352,11 @@ function buildAppMenu() {
             submenu: [
               { role: 'about' as const, label: `About ${APP_DISPLAY_NAME}` },
               { type: 'separator' as const },
-              ...(sparkleBridge
+              ...(checkForUpdatesFromMenu
                 ? [
                     {
                       label: 'Check for Updates…',
-                      click: () => sparkleBridge?.checkForUpdates(),
+                      click: () => checkForUpdatesFromMenu?.(),
                     },
                     { type: 'separator' as const },
                   ]
@@ -249,12 +384,12 @@ function buildAppMenu() {
           click: () =>
             shell.openExternal('https://github.com/BenjiThatFoxGuy/upi'),
         },
-        ...(!isMac && sparkleBridge
+        ...(!isMac && checkForUpdatesFromMenu
           ? [
               { type: 'separator' as const },
               {
                 label: 'Check for Updates…',
-                click: () => sparkleBridge?.checkForUpdates(),
+                click: () => checkForUpdatesFromMenu?.(),
               },
             ]
           : []),
