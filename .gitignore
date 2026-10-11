@@ -22,6 +22,8 @@ server/uploads/
 
 electron/node_modules/
 electron/dist/
+electron/pyinstaller-dist/
+/dist/
 
 .DS_Store
 Thumbs.db

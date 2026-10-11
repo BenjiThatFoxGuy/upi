@@ -1,0 +1,21 @@
+{
+  "name": "upi-desktop",
+  "version": "0.1.0",
+  "description": "Unitypackage Inspector – desktop",
+  "private": true,
+  "main": "dist/main.js",
+  "scripts": {
+    "dev": "ELECTRON_DEV=1 electron dist/main.js",
+    "compile": "tsc",
+    "dist": "npm run compile && electron-builder",
+    "dist:mac": "npm run compile && electron-builder --mac",
+    "dist:win": "npm run compile && electron-builder --win",
+    "dist:linux": "npm run compile && electron-builder --linux"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "electron": "^34.0.0",
+    "electron-builder": "^25.0.0",
+    "typescript": "~5.7.0"
+  }
+}

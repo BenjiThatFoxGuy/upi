@@ -1,0 +1,48 @@
+appId: io.github.benjithatfoxguy.upi
+productName: UPI
+
+directories:
+  output: ../dist/electron
+
+# One unique name per platform/arch so every file can live in the same release.
+artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+
+afterPack: scripts/adhoc-sign.js
+
+# Releases are uploaded by the build-electron workflow, not electron-builder,
+# and there is no auto-updater, so skip update metadata generation.
+publish: null
+
+# Compiled main/preload JS
+files:
+  - dist/**
+
+# Copy the Vite-built frontend and the PyInstaller bundle into app resources.
+# PyInstaller --onedir output: pyinstaller-dist/app/{app, _internal/...}
+extraResources:
+  - from: ../web/dist
+    to: frontend-dist
+    filter: ["**/*"]
+  - from: pyinstaller-dist/app
+    to: backend
+    filter: ["**/*"]
+
+# Architectures are picked on the command line (--x64 / --arm64) because the
+# PyInstaller backend can only be built for the host's own arch.
+mac:
+  target: dmg
+  category: public.app-category.developer-tools
+  # No Developer ID yet: skip real signing, scripts/adhoc-sign.js ad-hoc signs
+  # instead. Replace with a real identity (and notarization) once there is one.
+  identity: null
+
+win:
+  target: nsis
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+
+linux:
+  target: AppImage
+  category: Utility

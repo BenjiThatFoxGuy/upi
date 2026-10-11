@@ -17,11 +17,25 @@ function resolveBackendBaseUrl() {
     return 'http://localhost:8000'
   }
 
-  const { protocol, hostname } = window.location
-  return `${protocol}//${hostname}:8000`
+  // In production builds the frontend is always served by the Flask backend
+  // on the same origin (Docker, Electron, etc.). In Vite dev mode the
+  // frontend runs on :5173 while the backend runs separately on :8000.
+  if (import.meta.env.DEV) {
+    const { protocol, hostname } = window.location
+    return `${protocol}//${hostname}:8000`
+  }
+
+  return window.location.origin
 }
 
 const backendBaseUrl = resolveBackendBaseUrl()
+
+// Set by the desktop app's preload script. Electron opens a native save dialog
+// for downloads, so asset buttons read "Save as..." there.
+const isDesktopApp =
+  typeof window !== 'undefined' &&
+  Boolean((window as Window & { upiDesktop?: { isDesktop?: boolean } }).upiDesktop?.isDesktop)
+const downloadButtonLabel = isDesktopApp ? 'Save as...' : 'Download'
 const previewBatchSize = 36
 const maxImagePreviewBytes = 12 * 1024 * 1024
 const maxTextPreviewBytes = 256 * 1024
@@ -1305,7 +1319,7 @@ function App() {
                   <div className="asset-card-actions">
                     <span className="asset-guid">{asset.guid}</span>
                     <button disabled={busyAction === 'download'} onClick={() => void downloadAsset(asset.assetId)}>
-                      Download
+                      {downloadButtonLabel}
                     </button>
                   </div>
                 </div>
@@ -1334,7 +1348,7 @@ function App() {
                 <span>{asset.hasMeta ? 'Yes' : 'No'}</span>
                 <span>{asset.safePath ? 'Safe' : 'Flagged'}</span>
                 <button disabled={busyAction === 'download'} onClick={() => void downloadAsset(asset.assetId)}>
-                  Download
+                  {downloadButtonLabel}
                 </button>
               </div>
             ))}

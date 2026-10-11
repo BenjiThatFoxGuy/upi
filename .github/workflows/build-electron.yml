@@ -1,0 +1,301 @@
+name: Build Electron App
+
+# - push to main      -> build all platforms, refresh the rolling `nightly` prerelease
+# - push a `v*` tag   -> build all platforms, publish a versioned GitHub release
+# - pull_request      -> build all platforms, upload as workflow artifacts only
+# - workflow_dispatch -> build all platforms, upload as workflow artifacts only
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: build-electron-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # PyInstaller only produces binaries for the host arch, so each
+          # mac arch is built on a runner of that arch.
+          - name: macos-arm64
+            os: macos-latest
+            eb_args: --mac --arm64
+          - name: macos-x64
+            os: macos-15-intel
+            eb_args: --mac --x64
+          - name: windows-x64
+            os: windows-latest
+            eb_args: --win --x64
+          # Oldest supported Ubuntu keeps the bundled backend's glibc
+          # requirement low so the AppImage runs on more distros.
+          - name: linux-x64
+            os: ubuntu-22.04
+            eb_args: --linux --x64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve app version
+        id: version
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            BASE=$(node -p "require('./electron/package.json').version")
+            VERSION="${BASE}-nightly.${GITHUB_RUN_NUMBER}"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "App version: $VERSION"
+
+      # Every expensive step below is cached and skipped outright when its
+      # inputs are unchanged. Keys include OS + arch since outputs are native.
+
+      # -----------------------------------------------------------------------
+      # Python / PyInstaller
+      # -----------------------------------------------------------------------
+      - name: Restore PyInstaller bundle
+        id: backend-cache
+        uses: actions/cache@v4
+        with:
+          path: electron/pyinstaller-dist
+          key: pyinstaller-${{ runner.os }}-${{ runner.arch }}-py3.10-${{ hashFiles('server/**') }}
+
+      - name: Set up Python
+        if: steps.backend-cache.outputs.cache-hit != 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+          cache-dependency-path: server/requirements.txt
+
+      - name: Install Python dependencies + PyInstaller
+        if: steps.backend-cache.outputs.cache-hit != 'true'
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r server/requirements.txt pyinstaller
+
+      - name: Bundle backend with PyInstaller
+        if: steps.backend-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          cd server
+          pyinstaller \
+            --onedir \
+            --name app \
+            --distpath ../electron/pyinstaller-dist \
+            --workpath "$RUNNER_TEMP/upi-pyinstaller-work" \
+            --specpath "$RUNNER_TEMP/upi-pyinstaller-spec" \
+            --noconfirm \
+            app.py
+
+      # -----------------------------------------------------------------------
+      # Node / Vite frontend
+      # -----------------------------------------------------------------------
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            web/package-lock.json
+            electron/package-lock.json
+
+      - name: Restore web node_modules
+        id: web-modules-cache
+        uses: actions/cache@v4
+        with:
+          path: web/node_modules
+          key: web-modules-${{ runner.os }}-${{ runner.arch }}-node22-${{ hashFiles('web/package-lock.json') }}
+
+      - name: Install web dependencies
+        if: steps.web-modules-cache.outputs.cache-hit != 'true'
+        working-directory: web
+        run: npm ci
+
+      - name: Restore web build
+        id: web-dist-cache
+        uses: actions/cache@v4
+        with:
+          path: web/dist
+          key: web-dist-${{ hashFiles('web/package-lock.json', 'web/index.html', 'web/vite.config.ts', 'web/tsconfig*.json', 'web/src/**', 'web/public/**') }}
+
+      - name: Build web frontend
+        if: steps.web-dist-cache.outputs.cache-hit != 'true'
+        working-directory: web
+        run: npm run build
+
+      # -----------------------------------------------------------------------
+      # Electron
+      # -----------------------------------------------------------------------
+      - name: Restore Electron node_modules
+        id: electron-modules-cache
+        uses: actions/cache@v4
+        with:
+          path: electron/node_modules
+          key: electron-modules-${{ runner.os }}-${{ runner.arch }}-node22-${{ hashFiles('electron/package-lock.json') }}
+
+      - name: Install Electron dependencies
+        if: steps.electron-modules-cache.outputs.cache-hit != 'true'
+        working-directory: electron
+        run: npm ci
+
+      # electron-builder downloads the Electron zip plus NSIS/AppImage/dmg
+      # tooling on every run unless these directories are kept.
+      - name: Point Electron download caches at a cacheable path
+        shell: bash
+        run: |
+          echo "ELECTRON_CACHE=$RUNNER_TEMP/electron-cache" >> "$GITHUB_ENV"
+          echo "ELECTRON_BUILDER_CACHE=$RUNNER_TEMP/electron-builder-cache" >> "$GITHUB_ENV"
+
+      - name: Restore Electron download caches
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ runner.temp }}/electron-cache
+            ${{ runner.temp }}/electron-builder-cache
+          key: electron-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('electron/package-lock.json') }}
+          restore-keys: |
+            electron-downloads-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Build Electron distributable
+        shell: bash
+        env:
+          # No signing certificates yet: skip identity discovery on macOS.
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: |
+          cd electron
+          npm version "${{ steps.version.outputs.version }}" --no-git-tag-version --allow-same-version
+          npm run compile
+          npx electron-builder ${{ matrix.eb_args }} --config electron-builder.yml --publish never
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: upi-desktop-${{ matrix.name }}
+          path: |
+            dist/electron/*.dmg
+            dist/electron/*.exe
+            dist/electron/*.AppImage
+          retention-days: 7
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    needs: build
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: upi-desktop-*
+          merge-multiple: true
+
+      - name: List release files
+        run: ls -la artifacts
+
+      - name: Publish versioned release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+
+      # Rolling prerelease: drop the old one (and its tag) so the assets and
+      # the tag always point at the latest main build.
+      - name: Remove previous nightly release
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh release delete nightly --cleanup-tag --yes || true
+
+      - name: Publish nightly prerelease
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nightly
+          target_commitish: ${{ github.sha }}
+          name: Nightly
+          body: |
+            Automated desktop build of `${{ github.sha }}` from `main`.
+            Unsigned and not intended for general use; grab a versioned release when one exists.
+          prerelease: true
+          files: artifacts/*
+          fail_on_unmatched_files: true
+
+  pr-comment:
+    name: Comment build links
+    needs: build
+    # Fork PRs get a read-only token and can't comment. A run cancelled by a
+    # newer push must not overwrite the comment with a partial table.
+    if: >-
+      !cancelled() &&
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+
+      - name: Comment artifact links on PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+          BUILD_RESULT: ${{ needs.build.result }}
+        run: |
+          RUN_URL="https://github.com/${GH_REPO}/actions/runs/${RUN_ID}"
+          ROWS=$(gh api "repos/${GH_REPO}/actions/runs/${RUN_ID}/artifacts" \
+            --jq ".artifacts[] | \"| \(.name | sub(\"^upi-desktop-\"; \"\")) | [download](${RUN_URL}/artifacts/\(.id)) | \(.size_in_bytes / 1048576 | floor) MB | \(.expires_at[:10]) |\"" \
+            | sort)
+          {
+            echo "### 🖥️ Desktop test builds"
+            echo
+            echo "Built from ${HEAD_SHA} ([workflow run](${RUN_URL}))."
+            echo
+            if [[ "$BUILD_RESULT" != "success" ]]; then
+              echo "> ⚠️ Not every platform built successfully; check the workflow run."
+              echo
+            fi
+            if [[ -n "$ROWS" ]]; then
+              echo "| Platform | Download | Size | Expires |"
+              echo "|---|---|---|---|"
+              echo "$ROWS"
+              echo
+              echo "Downloads are zipped and are removed after the expiry date. These builds are unsigned: on macOS run \`xattr -cr /Applications/UPI.app\` after installing; on Windows click *More info* → *Run anyway*."
+            else
+              echo "No artifacts were produced."
+            fi
+          } > "$RUNNER_TEMP/comment.md"
+          .github/scripts/upsert-pr-comment.sh upi-desktop-builds "$RUNNER_TEMP/comment.md"
