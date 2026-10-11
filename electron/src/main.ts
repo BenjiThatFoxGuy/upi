@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell } from 'electron'
+import { app, BrowserWindow, Menu, shell } from 'electron'
 import { spawn, type ChildProcess } from 'child_process'
 import * as fs from 'fs'
 import * as http from 'http'
@@ -12,6 +12,11 @@ import * as path from 'path'
 const isDev = !!process.env.ELECTRON_DEV
 
 let backend: ChildProcess | null = null
+
+const APP_DISPLAY_NAME = 'Unity Package Inspector'
+
+// Stored reference to the Sparkle bridge for menu actions.
+let sparkleBridge: { checkForUpdates(): void } | null = null
 
 // ---------------------------------------------------------------------------
 // Port helpers
@@ -169,6 +174,7 @@ async function initAutoUpdater() {
         // deallocated handler.
         app.on('will-quit', () => bridge.setEventHandler(null))
 
+        sparkleBridge = bridge
         console.log('[sparkle] auto-updater initialized')
       } else {
         console.log('[sparkle] bridge not available, skipping auto-update')
@@ -194,6 +200,69 @@ async function initAutoUpdater() {
       console.error('[updater] failed to initialize:', err)
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Application menu
+// ---------------------------------------------------------------------------
+
+function buildAppMenu() {
+  const isMac = process.platform === 'darwin'
+
+  const template: Electron.MenuItemConstructorOptions[] = [
+    ...(isMac
+      ? [
+          {
+            label: APP_DISPLAY_NAME,
+            submenu: [
+              { role: 'about' as const, label: `About ${APP_DISPLAY_NAME}` },
+              { type: 'separator' as const },
+              ...(sparkleBridge
+                ? [
+                    {
+                      label: 'Check for Updates…',
+                      click: () => sparkleBridge?.checkForUpdates(),
+                    },
+                    { type: 'separator' as const },
+                  ]
+                : []),
+              { role: 'services' as const },
+              { type: 'separator' as const },
+              { role: 'hide' as const, label: `Hide ${APP_DISPLAY_NAME}` },
+              { role: 'hideOthers' as const },
+              { role: 'unhide' as const },
+              { type: 'separator' as const },
+              { role: 'quit' as const, label: `Quit ${APP_DISPLAY_NAME}` },
+            ] as Electron.MenuItemConstructorOptions[],
+          },
+        ]
+      : []),
+    { role: 'fileMenu' },
+    { role: 'editMenu' },
+    { role: 'viewMenu' },
+    { role: 'windowMenu' },
+    {
+      role: 'help',
+      submenu: [
+        {
+          label: 'GitHub Repository',
+          click: () =>
+            shell.openExternal('https://github.com/BenjiThatFoxGuy/upi'),
+        },
+        ...(!isMac && sparkleBridge
+          ? [
+              { type: 'separator' as const },
+              {
+                label: 'Check for Updates…',
+                click: () => sparkleBridge?.checkForUpdates(),
+              },
+            ]
+          : []),
+      ],
+    },
+  ]
+
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template))
 }
 
 // ---------------------------------------------------------------------------
@@ -237,8 +306,10 @@ async function createWindow() {
 
 app.whenReady().then(async () => {
   await createWindow()
-  // Fire-and-forget: don't block the window on update checks.
-  initAutoUpdater()
+  // Initialize the updater first, then build the menu (the menu includes
+  // "Check for Updates" only when the updater bridge is available).
+  await initAutoUpdater()
+  buildAppMenu()
 }).catch((err: unknown) => {
   console.error('Failed to launch:', err)
   app.quit()
