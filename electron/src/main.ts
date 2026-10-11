@@ -114,9 +114,10 @@ async function initAutoUpdater() {
       )
 
       if (bridge) {
+        const archSuffix = process.arch === 'x64' ? 'x64' : 'arm64'
         const appcastUrl =
           process.env.UPI_APPCAST_URL ??
-          'https://github.com/BenjiThatFoxGuy/upi/releases/latest/download/appcast.xml'
+          `https://github.com/BenjiThatFoxGuy/upi/releases/latest/download/appcast-${archSuffix}.xml`
 
         // The public EdDSA key is baked into Info.plist (SUPublicEDKey) at
         // build time. Read it from there so there's a single source of truth.

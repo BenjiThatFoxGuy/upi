@@ -48,7 +48,10 @@ mac:
   # instead. Replace with a real identity (and notarization) once there is one.
   identity: null
   extendInfo:
-    SUFeedURL: "https://github.com/BenjiThatFoxGuy/upi/releases/latest/download/appcast.xml"
+    # SUFeedURL is set dynamically in main.ts based on process.arch, so both
+    # arm64 and x64 builds point at their own appcast. The plist value is a
+    # fallback Sparkle reads if init() isn't called.
+    SUFeedURL: "https://github.com/BenjiThatFoxGuy/upi/releases/latest/download/appcast-arm64.xml"
     SUPublicEDKey: "SPARKLE_ED_PUBLIC_KEY_PLACEHOLDER"
 
 # Sparkle handles macOS updates; disable electron-builder's blockmap metadata.
