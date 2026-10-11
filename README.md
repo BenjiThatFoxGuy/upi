@@ -84,7 +84,7 @@ The desktop app bundles the backend and runs it on a random loopback port, so no
 
 The builds are not signed yet, so expect OS warnings:
 - **Windows:** SmartScreen may block the installer - click *More info* → *Run anyway*.
-- **macOS:** Gatekeeper will refuse to open a downloaded build. After copying UPI to Applications, run `xattr -cr /Applications/UPI.app` once.
+- **macOS:** Gatekeeper will refuse to open a downloaded build. After copying UPI to Applications, either run `xattr -cr /Applications/UPI.app` once, or go to **System Settings → Privacy & Security** and click **Open Anyway** next to the blocked-app notice.
 - **Linux:** `chmod +x UPI-*.AppImage` and run it.
 
 To build locally for your current OS (needs Node.js, Python 3.10+ and `pip install pyinstaller`):
