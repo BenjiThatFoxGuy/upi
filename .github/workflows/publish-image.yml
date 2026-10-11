@@ -6,7 +6,8 @@ on:
       - main
     tags:
       - 'v*'
-  # PRs only build the image (no push) so it can gate merging as a status check.
+  # PRs build the image as a status check. Same-repo PRs also push a `pr-<n>`
+  # tag and comment the pull command; fork PRs only build (read-only token).
   pull_request:
     branches:
       - main
@@ -24,18 +25,21 @@ jobs:
   build-and-push:
     name: Docker image
     runs-on: ubuntu-latest
-    # Publishing only happens from the public repo; test builds run anywhere.
+    # Publishing only happens from the public repo; PR builds run anywhere.
     if: github.repository == 'BenjiThatFoxGuy/upi' || github.event_name == 'pull_request'
     permissions:
       contents: read
       packages: write
+      pull-requests: write
+    env:
+      PUSH: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Log in to GHCR
-        if: github.event_name != 'pull_request'
+        if: env.PUSH == 'true'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -53,6 +57,7 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
+            type=ref,event=pr
             type=sha,prefix=sha-
 
       - name: Set up Docker Buildx
@@ -62,8 +67,39 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          push: ${{ github.event_name != 'pull_request' }}
+          push: ${{ env.PUSH == 'true' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Comment pull command on PR
+        if: github.event_name == 'pull_request' && env.PUSH == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PRIVATE_REPO: ${{ github.event.repository.private }}
+        run: |
+          IMAGE="${REGISTRY}/${IMAGE_NAME,,}:pr-${PR_NUMBER}"
+          {
+            echo "### 🐳 Docker test image"
+            echo
+            echo "Built from ${HEAD_SHA}. The tag moves with every push to this PR."
+            echo
+            echo '```bash'
+            echo "docker pull ${IMAGE}"
+            echo '```'
+            echo
+            echo "Image:"
+            echo
+            echo '```'
+            echo "${IMAGE}"
+            echo '```'
+            if [[ "$PRIVATE_REPO" == "true" ]]; then
+              echo
+              echo "> The package is private: run \`docker login ghcr.io\` with a token that has \`read:packages\` first."
+            fi
+          } > "$RUNNER_TEMP/comment.md"
+          .github/scripts/upsert-pr-comment.sh upi-docker-image "$RUNNER_TEMP/comment.md"

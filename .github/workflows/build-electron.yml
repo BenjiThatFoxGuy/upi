@@ -186,3 +186,57 @@ jobs:
           prerelease: true
           files: artifacts/*
           fail_on_unmatched_files: true
+
+  pr-comment:
+    name: Comment build links
+    needs: build
+    # Fork PRs get a read-only token and can't comment.
+    if: >-
+      always() &&
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+
+      - name: Comment artifact links on PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+          BUILD_RESULT: ${{ needs.build.result }}
+        run: |
+          RUN_URL="https://github.com/${GH_REPO}/actions/runs/${RUN_ID}"
+          ROWS=$(gh api "repos/${GH_REPO}/actions/runs/${RUN_ID}/artifacts" \
+            --jq ".artifacts[] | \"| \(.name | sub(\"^upi-desktop-\"; \"\")) | [download](${RUN_URL}/artifacts/\(.id)) | \(.size_in_bytes / 1048576 | floor) MB |\"" \
+            | sort)
+          {
+            echo "### 🖥️ Desktop test builds"
+            echo
+            echo "Built from ${HEAD_SHA} ([workflow run](${RUN_URL}))."
+            echo
+            if [[ "$BUILD_RESULT" != "success" ]]; then
+              echo "> ⚠️ Not every platform built successfully; check the workflow run."
+              echo
+            fi
+            if [[ -n "$ROWS" ]]; then
+              echo "| Platform | Download | Size |"
+              echo "|---|---|---|"
+              echo "$ROWS"
+              echo
+              echo "Downloads are zipped and expire after 7 days. These builds are unsigned: on macOS run \`xattr -cr /Applications/UPI.app\` after installing; on Windows click *More info* → *Run anyway*."
+            else
+              echo "No artifacts were produced."
+            fi
+          } > "$RUNNER_TEMP/comment.md"
+          .github/scripts/upsert-pr-comment.sh upi-desktop-builds "$RUNNER_TEMP/comment.md"
