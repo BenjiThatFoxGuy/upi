@@ -248,9 +248,10 @@ jobs:
   pr-comment:
     name: Comment build links
     needs: build
-    # Fork PRs get a read-only token and can't comment.
+    # Fork PRs get a read-only token and can't comment. A run cancelled by a
+    # newer push must not overwrite the comment with a partial table.
     if: >-
-      always() &&
+      !cancelled() &&
       github.event_name == 'pull_request' &&
       github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
