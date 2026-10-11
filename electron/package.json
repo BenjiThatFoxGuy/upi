@@ -17,5 +17,9 @@
     "electron": "^34.0.0",
     "electron-builder": "^25.0.0",
     "typescript": "~5.7.0"
+  },
+  "dependencies": {
+    "electron-sparkle-updater": "^0.5.3",
+    "electron-updater": "^6.8.9"
   }
 }
