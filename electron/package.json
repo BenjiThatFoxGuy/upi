@@ -1,6 +1,6 @@
 {
   "name": "upi-desktop",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "description": "Unitypackage Inspector – desktop",
   "private": true,
   "main": "dist/main.js",
