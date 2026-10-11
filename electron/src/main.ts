@@ -120,13 +120,24 @@ async function initAutoUpdater() {
           `https://github.com/BenjiThatFoxGuy/upi/releases/latest/download/appcast-${archSuffix}.xml`
 
         // The public EdDSA key is baked into Info.plist (SUPublicEDKey) at
-        // build time. Read it from there so there's a single source of truth.
-        const { SUPublicEDKey } = (
-          app as unknown as { getInfoPlistData?: () => Record<string, string> }
-        ).getInfoPlistData?.() ?? {}
+        // build time. Read it from the plist file directly since Electron
+        // doesn't expose a plist API.
+        let plistKey = ''
+        try {
+          const plistPath = path.join(
+            app.getAppPath(), '..', '..', 'Info.plist',
+          )
+          const plistContent = fs.readFileSync(plistPath, 'utf-8')
+          const match = plistContent.match(
+            /<key>SUPublicEDKey<\/key>\s*<string>([^<]+)<\/string>/,
+          )
+          if (match) plistKey = match[1]
+        } catch {
+          // Not packaged or plist unreadable - fall through to env var
+        }
 
         const publicEdKey =
-          process.env.UPI_SPARKLE_PUBLIC_KEY ?? SUPublicEDKey ?? ''
+          process.env.UPI_SPARKLE_PUBLIC_KEY ?? plistKey
 
         if (
           !publicEdKey ||
