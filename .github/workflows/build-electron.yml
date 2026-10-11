@@ -317,6 +317,7 @@ jobs:
       - name: Upload appcast to release
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           ls -la archive/
           # generate_appcast names the output after the zip (e.g.
