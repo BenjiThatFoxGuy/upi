@@ -53,12 +53,11 @@ mac:
     # fallback Sparkle reads if init() isn't called.
     SUFeedURL: "https://github.com/BenjiThatFoxGuy/upi/releases/latest/download/appcast-arm64.xml"
     SUPublicEDKey: "SPARKLE_ED_PUBLIC_KEY_PLACEHOLDER"
+  # Sparkle handles macOS updates; disable electron-builder's blockmap metadata
+  # so it doesn't generate Squirrel/electron-updater update info for mac.
 
 # Sparkle handles macOS updates; disable electron-builder's blockmap metadata.
 dmg:
-  writeUpdateInfo: false
-
-zip:
   writeUpdateInfo: false
 
 # Place Sparkle.framework into the app bundle's Frameworks/ directory.
