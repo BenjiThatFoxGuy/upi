@@ -1,0 +1,52 @@
+name: Clean Up PR Image
+
+# Deletes the `pr-<number>` test image from GHCR once its PR is merged or closed.
+
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  delete-image:
+    name: Delete PR image
+    # Fork PRs never pushed an image (and get a read-only token anyway).
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+
+    steps:
+      - name: Delete pr-${{ github.event.pull_request.number }} from GHCR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OWNER: ${{ github.repository_owner }}
+          REPO: ${{ github.event.repository.name }}
+          TAG: pr-${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          PACKAGE="${REPO,,}"
+          if [[ "$(gh api "users/${OWNER}" --jq .type)" == "Organization" ]]; then
+            BASE="orgs/${OWNER}/packages/container/${PACKAGE}"
+          else
+            BASE="users/${OWNER}/packages/container/${PACKAGE}"
+          fi
+
+          if ! VERSIONS=$(gh api --paginate "${BASE}/versions" 2>/dev/null); then
+            echo "Package ${PACKAGE} not found; nothing to clean up."
+            exit 0
+          fi
+
+          # Only delete versions whose sole tag is this PR's, so an image that
+          # also carries a release or nightly tag is never touched.
+          IDS=$(echo "$VERSIONS" | jq -r --arg tag "$TAG" \
+            '.[] | select(.metadata.container.tags == [$tag]) | .id')
+
+          if [[ -z "$IDS" ]]; then
+            echo "No image tagged ${TAG}; nothing to clean up."
+            exit 0
+          fi
+
+          for ID in $IDS; do
+            gh api -X DELETE "${BASE}/versions/${ID}"
+            echo "Deleted ${PACKAGE} version ${ID} (${TAG})"
+          done
