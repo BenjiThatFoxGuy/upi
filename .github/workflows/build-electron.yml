@@ -300,6 +300,11 @@ jobs:
           rm -f archive/*.dmg archive/latest*.yml
 
       - name: Generate appcast
+        # continue-on-error because the action's merge step hardcodes
+        # appcast.xml, but generate_appcast names the file after the zip
+        # (e.g. appcast-arm64.xml). The merge fails on first release anyway
+        # (no history). The signed appcast is still produced.
+        continue-on-error: true
         uses: Innei/electron-sparkle-updater/action@v1
         with:
           tag: ${{ github.ref_name }}
@@ -313,13 +318,24 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # Rename appcast to include the architecture
-          mv archive/appcast.xml archive/appcast-${{ matrix.arch }}.xml
+          ls -la archive/
+          # generate_appcast names the output after the zip (e.g.
+          # appcast-arm64.xml from UPI-*-mac-arm64.zip). Find and rename
+          # it to our canonical per-arch name.
+          APPCAST=$(ls archive/appcast*.xml 2>/dev/null | head -1)
+          if [[ -z "$APPCAST" ]]; then
+            echo "::error::No appcast XML found in archive/"
+            exit 1
+          fi
+          mv "$APPCAST" archive/appcast-${{ matrix.arch }}.xml
           # Upload appcast and any delta files to the existing release
-          gh release upload "${{ github.ref_name }}" \
-            archive/appcast-${{ matrix.arch }}.xml \
-            archive/*.delta \
-            --clobber
+          UPLOADS=(archive/appcast-${{ matrix.arch }}.xml)
+          shopt -s nullglob
+          DELTAS=(archive/*.delta)
+          if [[ ${#DELTAS[@]} -gt 0 ]]; then
+            UPLOADS+=("${DELTAS[@]}")
+          fi
+          gh release upload "${{ github.ref_name }}" "${UPLOADS[@]}" --clobber
 
   pr-comment:
     name: Comment build links
