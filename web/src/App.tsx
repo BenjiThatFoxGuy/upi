@@ -31,11 +31,14 @@ function resolveBackendBaseUrl() {
 const backendBaseUrl = resolveBackendBaseUrl()
 
 // Set by the desktop app's preload script. Electron opens a native save dialog
-// for downloads, so asset buttons read "Save as..." there.
+// for downloads, and there's no browser or page to speak of, so user-facing
+// copy is worded for a desktop window there.
 const isDesktopApp =
   typeof window !== 'undefined' &&
   Boolean((window as Window & { upiDesktop?: { isDesktop?: boolean } }).upiDesktop?.isDesktop)
-const downloadButtonLabel = isDesktopApp ? 'Save as...' : 'Download'
+const downloadButtonLabel = isDesktopApp ? 'Save' : 'Download'
+const downloadedVerb = isDesktopApp ? 'Saved' : 'Downloaded'
+const dropTargetLabel = isDesktopApp ? 'anywhere in the window' : 'anywhere on the page'
 const previewBatchSize = 36
 const maxImagePreviewBytes = 12 * 1024 * 1024
 const maxTextPreviewBytes = 256 * 1024
@@ -624,14 +627,14 @@ function App() {
       if (message.type === 'downloaded') {
         setBusyAction('idle')
         triggerBrowserDownload(message.filename, message.bytes)
-        setStatusMessage(`Downloaded ${message.filename}.`)
+        setStatusMessage(`${downloadedVerb} ${message.filename}.`)
         return
       }
 
       if (message.type === 'zipped') {
         setBusyAction('idle')
         triggerBrowserDownload(message.filename, message.bytes)
-        setStatusMessage(`Downloaded ${message.filename}.`)
+        setStatusMessage(`${downloadedVerb} ${message.filename}.`)
         return
       }
 
@@ -955,7 +958,7 @@ function App() {
     setError(null)
     setPkg(null)
 
-    setStatusMessage('Fetching remote package directly in the browser.')
+    setStatusMessage(isDesktopApp ? 'Fetching remote package.' : 'Fetching remote package directly in the browser.')
 
     try {
       const remoteFile = await fetchUrlAsLocalFile()
@@ -967,7 +970,7 @@ function App() {
       workerRef.current.postMessage({ type: 'index-package', file: remoteFile })
     } catch (caughtError) {
       if (backendAvailable && isLikelyCorsFailure(caughtError)) {
-        setStatusMessage('Browser fetch was blocked. Retrying through the backend.')
+        setStatusMessage(isDesktopApp ? 'Direct fetch was blocked. Retrying through the backend.' : 'Browser fetch was blocked. Retrying through the backend.')
 
         try {
           await indexRemoteUrlOnBackend()
@@ -1052,7 +1055,7 @@ function App() {
       const filename = filenameMatch?.[1] ?? 'asset.bin'
       const bytes = await response.arrayBuffer()
       triggerBrowserDownload(filename, bytes)
-      setStatusMessage(`Downloaded ${filename}.`)
+      setStatusMessage(`${downloadedVerb} ${filename}.`)
     } catch (caughtError) {
       const message = caughtError instanceof Error ? caughtError.message : 'Asset download failed.'
       setError(message)
@@ -1068,7 +1071,7 @@ function App() {
 
     setBusyAction('zip')
     setError(null)
-    setStatusMessage('Preparing ZIP download.')
+    setStatusMessage(isDesktopApp ? 'Preparing ZIP.' : 'Preparing ZIP download.')
 
     if (pkg.source === 'local') {
       workerRef.current?.postMessage({ type: 'download-package-zip' })
@@ -1093,7 +1096,7 @@ function App() {
       const filename = filenameMatch?.[1] ?? `${pkg.packageName.replace(/\.unitypackage$/i, '')}.zip`
       const bytes = await response.arrayBuffer()
       triggerBrowserDownload(filename, bytes)
-      setStatusMessage(`Downloaded ${filename}.`)
+      setStatusMessage(`${downloadedVerb} ${filename}.`)
     } catch (caughtError) {
       const message = caughtError instanceof Error ? caughtError.message : 'ZIP download failed.'
       setError(message)
@@ -1141,7 +1144,7 @@ function App() {
         <div className="hero-copy">
           <p className="eyebrow">Unitypackage Inspector</p>
           <h1>Inspect, verify, and unpack Unity packages.</h1>
-          <p className="lede">Open a package, fingerprint it by hash and GUIDs, compare it against a central catalog, browse its contents, and download individual files.</p>
+          <p className="lede">Open a package, fingerprint it by hash and GUIDs, compare it against a central catalog, browse its contents, and {isDesktopApp ? 'save' : 'download'} individual files.</p>
         </div>
 
         <div className="status-rack">
@@ -1183,7 +1186,7 @@ function App() {
       <section className="control-grid">
         <article className="panel ingest-panel">
           <h2>Load package</h2>
-          <p className="panel-copy">Choose a package from disk, drop one anywhere on the page, or load one from a direct URL.</p>
+          <p className="panel-copy">Choose a package from disk, drop one {dropTargetLabel}, or load one from a direct URL.</p>
           <p className="panel-copy">File selection starts indexing immediately when automatic routing is active.</p>
           <p className="panel-copy">{routingSummary}</p>
           <label className="file-picker">
