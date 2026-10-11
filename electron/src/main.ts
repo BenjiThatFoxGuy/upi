@@ -34,6 +34,7 @@ function waitForBackend(port: number, timeoutMs = 20_000): Promise<void> {
     function attempt() {
       http
         .get(`http://127.0.0.1:${port}/health`, (res) => {
+          res.resume()
           if (res.statusCode === 200) {
             resolve()
           } else if (Date.now() < deadline) {
@@ -66,6 +67,8 @@ async function startBackend(): Promise<number> {
   }
 
   backend = spawn(backendExe, [], {
+    // Don't pop a console window for the backend on Windows.
+    windowsHide: true,
     env: {
       ...process.env,
       // Bind only to loopback – no reason to expose the backend on the LAN.

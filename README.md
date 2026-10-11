@@ -67,6 +67,34 @@ Then run:
 docker compose up
 ```
 
+### Desktop app
+
+Prebuilt desktop builds are attached to [GitHub Releases](../../releases):
+
+| Platform | File |
+|---|---|
+| Windows (x64) | `UPI-<version>-win-x64.exe` (installer) |
+| macOS (Apple Silicon) | `UPI-<version>-mac-arm64.dmg` |
+| macOS (Intel) | `UPI-<version>-mac-x64.dmg` |
+| Linux (x64) | `UPI-<version>-linux-x86_64.AppImage` |
+
+Versioned releases are cut from `v*` tags; the `nightly` prerelease tracks `main`.
+
+The desktop app bundles the backend and runs it on a random loopback port, so nothing is exposed on your network.
+
+The builds are not signed yet, so expect OS warnings:
+- **Windows:** SmartScreen may block the installer - click *More info* → *Run anyway*.
+- **macOS:** Gatekeeper will refuse to open a downloaded build. After copying UPI to Applications, run `xattr -cr /Applications/UPI.app` once.
+- **Linux:** `chmod +x UPI-*.AppImage` and run it.
+
+To build locally for your current OS (needs Node.js, Python 3.10+ and `pip install pyinstaller`):
+
+```bash
+./electron/build.sh
+```
+
+Output goes to `dist/electron/`.
+
 ### Building from source
 
 If you need a custom build:

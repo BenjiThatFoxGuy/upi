@@ -1,10 +1,15 @@
 name: Build Electron App
 
+# - push to main      -> build all platforms, refresh the rolling `nightly` prerelease
+# - push a `v*` tag   -> build all platforms, publish a versioned GitHub release
+# - workflow_dispatch -> build all platforms, upload as workflow artifacts only
+
 on:
   push:
     branches:
       - main
-      - electron
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 concurrency:
@@ -13,25 +18,46 @@ concurrency:
 
 jobs:
   build:
+    name: Build (${{ matrix.name }})
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: macos-latest
-            eb_flag: --mac
-            artifact: "*.dmg"
-          - os: windows-latest
-            eb_flag: --win
-            artifact: "*.exe"
-          - os: ubuntu-latest
-            eb_flag: --linux
-            artifact: "*.AppImage"
+          # PyInstaller only produces binaries for the host arch, so each
+          # mac arch is built on a runner of that arch.
+          - name: macos-arm64
+            os: macos-latest
+            eb_args: --mac --arm64
+          - name: macos-x64
+            os: macos-15-intel
+            eb_args: --mac --x64
+          - name: windows-x64
+            os: windows-latest
+            eb_args: --win --x64
+          # Oldest supported Ubuntu keeps the bundled backend's glibc
+          # requirement low so the AppImage runs on more distros.
+          - name: linux-x64
+            os: ubuntu-22.04
+            eb_args: --linux --x64
 
     runs-on: ${{ matrix.os }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Resolve app version
+        id: version
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            BASE=$(node -p "require('./electron/package.json').version")
+            VERSION="${BASE}-nightly.${GITHUB_RUN_NUMBER}"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "App version: $VERSION"
 
       # -----------------------------------------------------------------------
       # Python / PyInstaller
@@ -54,7 +80,8 @@ jobs:
             --onedir \
             --name app \
             --distpath ../electron/pyinstaller-dist \
-            --workpath /tmp/upi-pyinstaller-work \
+            --workpath "$RUNNER_TEMP/upi-pyinstaller-work" \
+            --specpath "$RUNNER_TEMP/upi-pyinstaller-spec" \
             --noconfirm \
             app.py
 
@@ -66,7 +93,9 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: web/package-lock.json
+          cache-dependency-path: |
+            web/package-lock.json
+            electron/package-lock.json
 
       - name: Build web frontend
         run: |
@@ -85,17 +114,71 @@ jobs:
       - name: Build Electron distributable
         shell: bash
         env:
-          # electron-builder reads this to sign/notarise on macOS; skip when unset.
+          # No signing certificates yet: skip identity discovery on macOS.
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: |
           cd electron
+          npm version "${{ steps.version.outputs.version }}" --no-git-tag-version --allow-same-version
           npm run compile
-          npx electron-builder ${{ matrix.eb_flag }} --config electron-builder.yml
+          npx electron-builder ${{ matrix.eb_args }} --config electron-builder.yml --publish never
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: upi-desktop-${{ matrix.os }}
-          path: dist/electron/${{ matrix.artifact }}
-          retention-days: 1
+          name: upi-desktop-${{ matrix.name }}
+          path: |
+            dist/electron/*.dmg
+            dist/electron/*.exe
+            dist/electron/*.AppImage
+          retention-days: 7
           if-no-files-found: error
+
+  release:
+    name: Publish release
+    needs: build
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: upi-desktop-*
+          merge-multiple: true
+
+      - name: List release files
+        run: ls -la artifacts
+
+      - name: Publish versioned release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+
+      # Rolling prerelease: drop the old one (and its tag) so the assets and
+      # the tag always point at the latest main build.
+      - name: Remove previous nightly release
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh release delete nightly --cleanup-tag --yes || true
+
+      - name: Publish nightly prerelease
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nightly
+          target_commitish: ${{ github.sha }}
+          name: Nightly
+          body: |
+            Automated desktop build of `${{ github.sha }}` from `main`.
+            Unsigned and not intended for general use; grab a versioned release when one exists.
+          prerelease: true
+          files: artifacts/*
+          fail_on_unmatched_files: true
