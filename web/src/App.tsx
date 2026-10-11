@@ -29,6 +29,13 @@ function resolveBackendBaseUrl() {
 }
 
 const backendBaseUrl = resolveBackendBaseUrl()
+
+// Set by the desktop app's preload script. Electron opens a native save dialog
+// for downloads, so asset buttons read "Save as..." there.
+const isDesktopApp =
+  typeof window !== 'undefined' &&
+  Boolean((window as Window & { upiDesktop?: { isDesktop?: boolean } }).upiDesktop?.isDesktop)
+const downloadButtonLabel = isDesktopApp ? 'Save as...' : 'Download'
 const previewBatchSize = 36
 const maxImagePreviewBytes = 12 * 1024 * 1024
 const maxTextPreviewBytes = 256 * 1024
@@ -1312,7 +1319,7 @@ function App() {
                   <div className="asset-card-actions">
                     <span className="asset-guid">{asset.guid}</span>
                     <button disabled={busyAction === 'download'} onClick={() => void downloadAsset(asset.assetId)}>
-                      Download
+                      {downloadButtonLabel}
                     </button>
                   </div>
                 </div>
@@ -1341,7 +1348,7 @@ function App() {
                 <span>{asset.hasMeta ? 'Yes' : 'No'}</span>
                 <span>{asset.safePath ? 'Safe' : 'Flagged'}</span>
                 <button disabled={busyAction === 'download'} onClick={() => void downloadAsset(asset.assetId)}>
-                  Download
+                  {downloadButtonLabel}
                 </button>
               </div>
             ))}
